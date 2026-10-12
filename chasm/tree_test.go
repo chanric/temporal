@@ -5648,7 +5648,7 @@ func (s *nodeSuite) TestCloseTransaction_LogicalTaskCountMetrics() {
 				})
 			}
 
-			_, err = root.CloseTransaction(nil)
+			_, err = root.CloseTransaction(context.Background())
 			s.NoError(err)
 
 			snapshot := capture.Snapshot()
@@ -5706,7 +5706,7 @@ func (s *nodeSuite) TestCloseTransaction_LogicalTaskCountMetrics_ExcludesInvalid
 		&TestPureTask{Data: []byte("invalid")},
 	)
 
-	_, err = root.CloseTransaction(nil)
+	_, err = root.CloseTransaction(context.Background())
 	s.NoError(err)
 
 	snapshot := capture.Snapshot()
@@ -5742,7 +5742,7 @@ func (s *nodeSuite) TestCloseTransaction_LogicalTaskCountMetrics_AggregatesAcros
 		})
 	}
 
-	_, err = root.CloseTransaction(nil)
+	_, err = root.CloseTransaction(context.Background())
 	s.NoError(err)
 
 	counts := capture.Snapshot()[metrics.ChasmLogicalTaskCount.Name()]
@@ -5773,7 +5773,7 @@ func (s *nodeSuite) TestCloseTransaction_LogicalTaskCountMetrics_NotEmittedForTa
 		mutableContext.AddTask(testComponent, TaskAttributes{}, &TestDiscardableSideEffectTask{})
 	}
 
-	_, err = root.CloseTransaction(nil)
+	_, err = root.CloseTransaction(context.Background())
 	s.NoError(err)
 
 	snapshot := capture.Snapshot()
