@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package temporal.server.chasm.lib.historydlq.proto.v1;
+
+import "google/protobuf/timestamp.proto";
+import "temporal/server/api/common/v1/dlq.proto";
+
+option go_package = "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb;historydlqpb";
+
+// MessageStatus describes whether a DLQ message still needs operator handling.
+enum MessageStatus {
+  MESSAGE_STATUS_UNSPECIFIED = 0; // No status was specified; new messages must explicitly use PENDING.
+  MESSAGE_STATUS_PENDING = 1; // The message remains open without automatic expiration.
+  MESSAGE_STATUS_RESOLVED = 2; // Merge or purge closed the message; normal retention applies.
+}
+
+// Resolution records why a DLQ message was resolved.
+enum Resolution {
+  RESOLUTION_UNSPECIFIED = 0; // The message has not been resolved.
+  RESOLUTION_MERGED = 1; // The task was accepted back into processing, but may still fail during execution.
+  RESOLUTION_PURGED = 2; // The operator discarded the task without re-enqueueing it.
+}
+
+// TaskIdentity preserves the original persisted task's identity across DLQ retries.
+message TaskIdentity {
+  // Shard in the original source cluster, independent of DLQ placement.
+  int32 source_shard_id = 1;
+  // ID assigned when the original task was persisted.
+  int64 task_id = 2;
+  // Original execution namespace.
+  string namespace_id = 3;
+  // Original execution Business ID (Workflow ID for workflows).
+  string business_id = 4;
+  // Original execution Run ID.
+  string run_id = 5;
+  // Original execution archetype; zero is permitted for legacy workflow tasks.
+  uint32 archetype_id = 6;
+}
+
+// MessageState contains metadata only; the HistoryTask lives in a separate DATA node.
+message MessageState {
+  // Queue containing this message.
+  temporal.server.api.common.v1.HistoryDLQKey queue = 1;
+  // Identity used to derive the stable DLQ Business ID.
+  TaskIdentity original = 2;
+  // Server-assigned numeric bound for operator requests; collisions are allowed.
+  int64 message_id = 3;
+  // Server time (ns) assigned once when the execution is created.
+  google.protobuf.Timestamp enqueued_at = 4;
+  // Pending messages remain open without expiration.
+  MessageStatus status = 5;
+  // Terminal resolution reason, unset while pending.
+  Resolution resolution = 6;
+  // Time (ns) of the first successful resolution, unset while pending.
+  google.protobuf.Timestamp resolved_at = 7;
+}
