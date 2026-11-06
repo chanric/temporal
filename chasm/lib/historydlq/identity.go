@@ -11,6 +11,9 @@ import (
 	commonspb "go.temporal.io/server/api/common/v1"
 )
 
+// The range width is part of the segment identity format and requires a routing migration to change.
+const segmentTaskIDRangeSize int64 = 128
+
 type QueueKey struct {
 	CategoryID    int32
 	SourceCluster string
@@ -29,29 +32,67 @@ type TaskIdentity struct {
 }
 
 type EnqueueRequest struct {
-	Queue    QueueKey
-	Original TaskIdentity
-	Task     *commonspb.HistoryTask
+	Queue              QueueKey
+	SourceTaskIdentity TaskIdentity
+	Task               *commonspb.HistoryTask
 }
 
 type MessageRef struct {
-	NamespaceID string
-	BusinessID  string
-	RunID       string
-	MessageID   int64
-	Queue       QueueKey
-	EnqueuedAt  time.Time
+	BusinessID string
+	RunID      string
+	MessageID  int64
+	Queue      QueueKey
+	EnqueuedAt time.Time
+	EntryKey   string
+}
+
+func validateQueue(queue QueueKey) error {
+	if queue.CategoryID <= 0 || queue.SourceCluster == "" || queue.TargetCluster == "" {
+		return serviceerror.NewInvalidArgument("history DLQ requires a queue identity")
+	}
+	return nil
+}
+
+func validateIdentity(queue QueueKey, source TaskIdentity) error {
+	if err := validateQueue(queue); err != nil || source.SourceShardID <= 0 || source.TaskID <= 0 {
+		return serviceerror.NewInvalidArgument("history DLQ requires a queue and source persisted task identity")
+	}
+	return nil
 }
 
 func identityHash(queue QueueKey, original TaskIdentity) ([sha256.Size]byte, error) {
-	if queue.CategoryID <= 0 || queue.SourceCluster == "" || queue.TargetCluster == "" ||
-		original.SourceShardID <= 0 || original.TaskID <= 0 {
-		return [sha256.Size]byte{}, serviceerror.NewInvalidArgument("history DLQ requires a queue and original persisted task identity")
+	if err := validateIdentity(queue, original); err != nil {
+		return [sha256.Size]byte{}, err
 	}
 	// Quoted strings preserve tuple boundaries, including delimiters and escapes.
 	tuple := fmt.Sprintf("historydlq:v1:%d:%q:%q:%d:%d",
 		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, original.SourceShardID, original.TaskID)
 	return sha256.Sum256([]byte(tuple)), nil
+}
+
+// SegmentBusinessID returns the stable Business ID for the source task's bounded segment.
+func SegmentBusinessID(queue QueueKey, source TaskIdentity) (string, error) {
+	if err := validateIdentity(queue, source); err != nil {
+		return "", err
+	}
+	// Quoted strings preserve tuple boundaries, including delimiters and escapes.
+	tuple := fmt.Sprintf("historydlq:segment:v1:%d:%q:%q:%d:%d",
+		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, source.SourceShardID, taskIDRangeStart(source.TaskID))
+	hash := sha256.Sum256([]byte(tuple))
+	return "historydlq:segment:v1:" + hex.EncodeToString(hash[:]), nil
+}
+
+func taskIDRangeStart(taskID int64) int64 {
+	return ((taskID-1)/segmentTaskIDRangeSize)*segmentTaskIDRangeSize + 1
+}
+
+// EntryKey returns the stable key for the original persisted task within its segment.
+func EntryKey(queue QueueKey, original TaskIdentity) (string, error) {
+	hash, err := identityHash(queue, original)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func BusinessID(queue QueueKey, original TaskIdentity) (string, error) {

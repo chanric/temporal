@@ -81,6 +81,117 @@ func (this *MessageState) Equal(that interface{}) bool {
 	return proto.Equal(this, that1)
 }
 
+// Marshal an object of type SegmentState to the protobuf v3 wire format
+func (val *SegmentState) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type SegmentState from the protobuf v3 wire format
+func (val *SegmentState) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *SegmentState) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two SegmentState values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *SegmentState) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *SegmentState
+	switch t := that.(type) {
+	case *SegmentState:
+		that1 = t
+	case SegmentState:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type EntryState to the protobuf v3 wire format
+func (val *EntryState) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type EntryState from the protobuf v3 wire format
+func (val *EntryState) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *EntryState) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two EntryState values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *EntryState) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *EntryState
+	switch t := that.(type) {
+	case *EntryState:
+		that1 = t
+	case EntryState:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type MessageRef to the protobuf v3 wire format
+func (val *MessageRef) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type MessageRef from the protobuf v3 wire format
+func (val *MessageRef) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *MessageRef) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two MessageRef values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *MessageRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *MessageRef
+	switch t := that.(type) {
+	case *MessageRef:
+		that1 = t
+	case MessageRef:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
 var (
 	MessageStatus_shorthandValue = map[string]int32{
 		"Unspecified": 0,

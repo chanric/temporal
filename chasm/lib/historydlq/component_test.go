@@ -188,9 +188,9 @@ func TestSerializedTaskPersistence(t *testing.T) {
 			req := componentRequest()
 			req.Queue.CategoryID = int32(task.GetCategory().ID())
 			req.Task.Blob = blob
-			req.Original.ArchetypeID = 0
+			req.SourceTaskIdentity.ArchetypeID = 0
 			if typed, ok := task.(tasks.HasArchetypeID); ok {
-				req.Original.ArchetypeID = typed.GetArchetypeID()
+				req.SourceTaskIdentity.ArchetypeID = typed.GetArchetypeID()
 			}
 			registry := chasm.NewRegistry(log.NewTestLogger())
 			require.NoError(t, registry.Register(&chasm.CoreLibrary{}))

@@ -11,7 +11,7 @@ option go_package = "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb
 enum MessageStatus {
   MESSAGE_STATUS_UNSPECIFIED = 0; // No status was specified; new messages must explicitly use PENDING.
   MESSAGE_STATUS_PENDING = 1; // The message remains open without automatic expiration.
-  MESSAGE_STATUS_RESOLVED = 2; // Merge or purge closed the message; normal retention applies.
+  MESSAGE_STATUS_RESOLVED = 2; // The message no longer needs operator handling.
 }
 
 // Resolution records why a DLQ message was resolved.
@@ -53,4 +53,52 @@ message MessageState {
   Resolution resolution = 6;
   // Time (ns) of the first successful resolution, unset while pending.
   google.protobuf.Timestamp resolved_at = 7;
+}
+
+// SegmentState contains the identity and storage budget of one bounded DLQ segment.
+message SegmentState {
+  // Queue whose entries are stored in this segment.
+  temporal.server.api.common.v1.HistoryDLQKey queue = 1;
+  // Source shard whose task IDs belong to this segment.
+  int32 source_shard_id = 2;
+  // First source task ID in the segment's fixed range.
+  int64 task_id_range_start = 3;
+  // Conservative retained-byte budget, including metadata and framework reserves.
+  int64 retained_bytes = 4;
+}
+
+// EntryState contains metadata for one task in a DLQ segment.
+message EntryState {
+  // Identity of the persisted task that this entry represents.
+  TaskIdentity source_task_identity = 1;
+  // Server-assigned numeric bound for operator requests; collisions are allowed.
+  int64 message_id = 2;
+  // Server time assigned once when the entry is accepted.
+  google.protobuf.Timestamp enqueued_at = 3;
+  // Pending entries remain open without expiration.
+  MessageStatus status = 4;
+  // Terminal resolution reason, unset while pending.
+  Resolution resolution = 5;
+  // Time of the first successful resolution, unset while pending.
+  google.protobuf.Timestamp resolved_at = 6;
+  // Serialized HistoryTask size, released from the segment budget on resolution.
+  int64 payload_size_bytes = 7;
+}
+
+// MessageRef addresses one exact entry in a CHASM DLQ segment.
+message MessageRef {
+  reserved 1;
+  reserved "system_namespace_id";
+  // Stable segment Business ID derived from queue, source shard, and task-ID range.
+  string business_id = 2;
+  // Exact accepted segment run, required for reads and resolution.
+  string run_id = 3;
+  // Persisted numeric bound; different entries may have the same value.
+  int64 message_id = 4;
+  // Original DLQ queue identity.
+  temporal.server.api.common.v1.HistoryDLQKey queue = 5;
+  // Timestamp assigned once on durable admission.
+  google.protobuf.Timestamp enqueued_at = 6;
+  // Stable key for the exact entry in the segment.
+  string entry_key = 7;
 }

@@ -14,10 +14,11 @@ import (
 )
 
 type StoredMessage struct {
-	Ref        MessageRef
-	Status     historydlqpb.MessageStatus
-	Resolution historydlqpb.Resolution
-	Task       *commonspb.HistoryTask
+	Ref                MessageRef
+	SourceTaskIdentity TaskIdentity
+	Status             historydlqpb.MessageStatus
+	Resolution         historydlqpb.Resolution
+	Task               *commonspb.HistoryTask
 }
 
 type Message struct {
@@ -43,19 +44,19 @@ var (
 // read the existing execution rather than construct a new message.
 func NewMessage(ctx chasm.MutableContext, req EnqueueRequest) (*Message, error) {
 	encoding := req.Task.GetBlob().GetEncodingType()
-	if req.Task.GetShardId() != req.Original.SourceShardID || (encoding != enumspb.ENCODING_TYPE_PROTO3 && encoding != enumspb.ENCODING_TYPE_JSON) || len(req.Task.GetBlob().GetData()) == 0 {
+	if req.Task.GetShardId() != req.SourceTaskIdentity.SourceShardID || (encoding != enumspb.ENCODING_TYPE_PROTO3 && encoding != enumspb.ENCODING_TYPE_JSON) || len(req.Task.GetBlob().GetData()) == 0 {
 		return nil, serviceerror.NewInvalidArgument("history DLQ requires a nonempty supported task with the original source shard")
 	}
 	c := &Message{}
 	now := ctx.Now(c)
-	id, err := messageID(req.Queue, req.Original, now)
+	id, err := messageID(req.Queue, req.SourceTaskIdentity, now)
 	if err != nil {
 		return nil, err
 	}
 	c.MessageState = &historydlqpb.MessageState{
 		Queue: &commonspb.HistoryDLQKey{TaskCategory: req.Queue.CategoryID, SourceCluster: req.Queue.SourceCluster, TargetCluster: req.Queue.TargetCluster},
-		Original: &historydlqpb.TaskIdentity{SourceShardId: req.Original.SourceShardID, TaskId: req.Original.TaskID, NamespaceId: req.Original.NamespaceID,
-			BusinessId: req.Original.BusinessID, RunId: req.Original.RunID, ArchetypeId: req.Original.ArchetypeID},
+		Original: &historydlqpb.TaskIdentity{SourceShardId: req.SourceTaskIdentity.SourceShardID, TaskId: req.SourceTaskIdentity.TaskID, NamespaceId: req.SourceTaskIdentity.NamespaceID,
+			BusinessId: req.SourceTaskIdentity.BusinessID, RunId: req.SourceTaskIdentity.RunID, ArchetypeId: req.SourceTaskIdentity.ArchetypeID},
 		MessageId: id, EnqueuedAt: timestamppb.New(now), Status: historydlqpb.MESSAGE_STATUS_PENDING,
 	}
 	c.Task = chasm.NewDataField(ctx, proto.Clone(req.Task).(*commonspb.HistoryTask))
@@ -71,9 +72,9 @@ func (c *Message) Read(ctx chasm.Context) (StoredMessage, error) {
 	key := ctx.ExecutionKey()
 	queue := c.GetQueue()
 	return StoredMessage{
-		Ref: MessageRef{NamespaceID: key.NamespaceID, BusinessID: key.BusinessID, RunID: key.RunID, MessageID: c.GetMessageId(),
+		Ref: MessageRef{BusinessID: key.BusinessID, RunID: key.RunID, MessageID: c.GetMessageId(),
 			Queue: QueueKey{CategoryID: queue.GetTaskCategory(), SourceCluster: queue.GetSourceCluster(), TargetCluster: queue.GetTargetCluster()}, EnqueuedAt: c.GetEnqueuedAt().AsTime()},
-		Status: c.GetStatus(), Resolution: c.GetResolution(), Task: proto.Clone(task).(*commonspb.HistoryTask),
+		SourceTaskIdentity: taskIdentity(c.GetOriginal()), Status: c.GetStatus(), Resolution: c.GetResolution(), Task: proto.Clone(task).(*commonspb.HistoryTask),
 	}, nil
 }
 
