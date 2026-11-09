@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package temporal.server.chasm.lib.historydlq.proto.v1;
+
+import "chasm/lib/historydlq/proto/v1/message.proto";
+import "temporal/server/api/common/v1/api_category.proto";
+import "temporal/server/api/routing/v1/extension.proto";
+
+option go_package = "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb;historydlqpb";
+
+// HistoryDLQService stores failed history tasks in cluster-local system executions.
+service HistoryDLQService {
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+  rpc ReadMessage(ReadMessageRequest) returns (ReadMessageResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "ref.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+  rpc Resolve(ResolveRequest) returns (ResolveResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "ref.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+}
+

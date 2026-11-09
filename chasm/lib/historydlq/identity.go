@@ -11,8 +11,8 @@ import (
 	commonspb "go.temporal.io/server/api/common/v1"
 )
 
-// The range width is part of the segment identity format and requires a routing migration to change.
-const segmentTaskIDRangeSize int64 = 128
+// Changing the bucket count can create duplicate entries across segment layouts.
+const segmentBucketCount uint32 = 4
 
 type QueueKey struct {
 	CategoryID    int32
@@ -70,20 +70,24 @@ func identityHash(queue QueueKey, original TaskIdentity) ([sha256.Size]byte, err
 	return sha256.Sum256([]byte(tuple)), nil
 }
 
-// SegmentBusinessID returns the stable Business ID for the source task's bounded segment.
+// SegmentBucketID returns the producer's stable bucket within a segment pool.
+func SegmentBucketID(source TaskIdentity) uint32 {
+	tuple := fmt.Sprintf("historydlq:producer:v1:%q:%d:%q", source.NamespaceID, source.ArchetypeID, source.BusinessID)
+	hash := sha256.Sum256([]byte(tuple))
+	return uint32(binary.BigEndian.Uint64(hash[:8]) % uint64(segmentBucketCount))
+}
+
+// SegmentBusinessID returns the stable Business ID for the source task's bucketed segment.
 func SegmentBusinessID(queue QueueKey, source TaskIdentity) (string, error) {
 	if err := validateIdentity(queue, source); err != nil {
 		return "", err
 	}
+	bucketID := SegmentBucketID(source)
 	// Quoted strings preserve tuple boundaries, including delimiters and escapes.
-	tuple := fmt.Sprintf("historydlq:segment:v1:%d:%q:%q:%d:%d",
-		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, source.SourceShardID, taskIDRangeStart(source.TaskID))
+	tuple := fmt.Sprintf("historydlq:segment:v0:%d:%q:%q:%d:%d:%d",
+		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, source.SourceShardID, segmentBucketCount, bucketID)
 	hash := sha256.Sum256([]byte(tuple))
-	return "historydlq:segment:v1:" + hex.EncodeToString(hash[:]), nil
-}
-
-func taskIDRangeStart(taskID int64) int64 {
-	return ((taskID-1)/segmentTaskIDRangeSize)*segmentTaskIDRangeSize + 1
+	return "historydlq:segment:v0:" + hex.EncodeToString(hash[:]), nil
 }
 
 // EntryKey returns the stable key for the original persisted task within its segment.
@@ -95,18 +99,7 @@ func EntryKey(queue QueueKey, original TaskIdentity) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-func BusinessID(queue QueueKey, original TaskIdentity) (string, error) {
-	hash, err := identityHash(queue, original)
-	if err != nil {
-		return "", err
-	}
-	return "historydlq:v1:" + hex.EncodeToString(hash[:]), nil
-}
-
 func messageID(queue QueueKey, original TaskIdentity, enqueuedAt time.Time) (int64, error) {
-	// Versions 1–3 are reserved for future numeric formats.
-	const version int64 = 0
-
 	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	if enqueuedAt.Before(epoch) || !enqueuedAt.Before(epoch.Add(time.Duration(1<<41)*time.Millisecond)) {
 		return 0, serviceerror.NewInvalidArgument("history DLQ enqueue time is outside the message ID range")
@@ -117,5 +110,5 @@ func messageID(queue QueueKey, original TaskIdentity, enqueuedAt time.Time) (int
 	}
 	elapsedMilliseconds := enqueuedAt.UnixMilli() - epoch.UnixMilli()
 	hash20 := int64(binary.BigEndian.Uint32(hash[28:]) & ((1 << 20) - 1))
-	return (version << 61) | (elapsedMilliseconds << 20) | hash20, nil
+	return (elapsedMilliseconds << 20) | hash20, nil
 }

@@ -1,29 +1,46 @@
 package historydlq
 
-import "go.temporal.io/server/chasm"
+import (
+	"go.temporal.io/server/chasm"
+	historydlqpb "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb/v1"
+	"google.golang.org/grpc"
+)
 
 const (
 	libraryName          = "historydlq"
-	componentName        = "message"
 	segmentComponentName = "segment"
 	entryComponentName   = "entry"
 )
 
-type Library struct{ chasm.UnimplementedLibrary }
+type Library struct {
+	chasm.UnimplementedLibrary
+	handler *serviceHandler
+}
 
 func NewNilLibrary() *Library { return &Library{} }
+
+func newLibrary(handler *serviceHandler) *Library { return &Library{handler: handler} }
+
+func (l *Library) RegisterServices(server *grpc.Server) {
+	if l.handler != nil {
+		historydlqpb.RegisterHistoryDLQServiceServer(server, l.handler)
+	}
+}
 
 func (l *Library) Name() string { return libraryName }
 
 func (l *Library) Components() []*chasm.RegistrableComponent {
 	return []*chasm.RegistrableComponent{
-		chasm.NewRegistrableComponent[*Message](componentName,
-			chasm.WithBusinessIDAlias("HistoryDLQBusinessId"),
-			chasm.WithSearchAttributes(categorySearchAttribute, sourceSearchAttribute, targetSearchAttribute,
-				messageIDSearchAttribute, enqueuedAtSearchAttribute, pendingSearchAttribute)),
 		chasm.NewRegistrableComponent[*Segment](segmentComponentName,
 			chasm.WithBusinessIDAlias("HistoryDLQSegmentBusinessId"),
 			chasm.WithSearchAttributes(categorySearchAttribute, sourceSearchAttribute, targetSearchAttribute, pendingSearchAttribute)),
 		chasm.NewRegistrableComponent[*Entry](entryComponentName),
 	}
 }
+
+var (
+	categorySearchAttribute = chasm.NewSearchAttributeInt("HistoryDLQCategory", chasm.SearchAttributeFieldInt01)
+	sourceSearchAttribute   = chasm.NewSearchAttributeKeyword("HistoryDLQSourceCluster", chasm.SearchAttributeFieldKeyword01)
+	targetSearchAttribute   = chasm.NewSearchAttributeKeyword("HistoryDLQTargetCluster", chasm.SearchAttributeFieldKeyword02)
+	pendingSearchAttribute  = chasm.NewSearchAttributeBool("HistoryDLQPending", chasm.SearchAttributeFieldBool01)
+)

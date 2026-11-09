@@ -13,6 +13,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+type StoredMessage struct {
+	Ref                MessageRef
+	SourceTaskIdentity TaskIdentity
+	Task               *commonspb.HistoryTask
+}
+
 type Entry struct {
 	chasm.UnimplementedComponent
 	*historydlqpb.EntryState
@@ -31,10 +37,9 @@ func newEntry(ctx chasm.MutableContext, req EnqueueRequest, enqueuedAt time.Time
 	}
 	return &Entry{
 		EntryState: &historydlqpb.EntryState{
-			SourceTaskIdentity: taskIdentityProto(req.SourceTaskIdentity),
+			SourceTaskIdentity: taskIdentityToProto(req.SourceTaskIdentity),
 			MessageId:          id,
 			EnqueuedAt:         timestamppb.New(enqueuedAt),
-			Status:             historydlqpb.MESSAGE_STATUS_PENDING,
 			PayloadSizeBytes:   int64(proto.Size(req.Task)),
 		},
 		Task: chasm.NewDataField(ctx, common.CloneProto(req.Task)),
@@ -44,12 +49,7 @@ func newEntry(ctx chasm.MutableContext, req EnqueueRequest, enqueuedAt time.Time
 func (e *Entry) Read(ctx chasm.Context, ref MessageRef) (StoredMessage, error) {
 	stored := StoredMessage{
 		Ref:                ref,
-		SourceTaskIdentity: taskIdentity(e.GetSourceTaskIdentity()),
-		Status:             e.GetStatus(),
-		Resolution:         e.GetResolution(),
-	}
-	if stored.Status == historydlqpb.MESSAGE_STATUS_RESOLVED {
-		return stored, nil
+		SourceTaskIdentity: taskIdentityProtoToIdentity(e.GetSourceTaskIdentity()),
 	}
 	task, ok := e.Task.TryGet(ctx)
 	if !ok {
@@ -60,8 +60,5 @@ func (e *Entry) Read(ctx chasm.Context, ref MessageRef) (StoredMessage, error) {
 }
 
 func (e *Entry) LifecycleState(chasm.Context) chasm.LifecycleState {
-	if e.GetStatus() == historydlqpb.MESSAGE_STATUS_RESOLVED {
-		return chasm.LifecycleStateCompleted
-	}
 	return chasm.LifecycleStateRunning
 }

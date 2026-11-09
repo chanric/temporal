@@ -79,7 +79,18 @@ func TestNewDLQWriterAdapter(t *testing.T) {
 			metricsHandler := metricstest.NewCaptureHandler()
 			capture := metricsHandler.StartCapture()
 			writer := replication.NewDLQWriterAdapter(
-				queues.NewDLQWriter(queueWriter, metricsHandler, log.NewTestLogger(), namespaceRegistry, chasm.NewRegistry(log.NewTestLogger())),
+				queues.NewDLQWriter(
+					queues.NewDLQTaskEnqueuer(
+						queueWriter,
+						nil,
+						serialization.NewSerializer(),
+						func() bool { return false },
+					),
+					metricsHandler,
+					log.NewTestLogger(),
+					namespaceRegistry,
+					chasm.NewRegistry(log.NewTestLogger()),
+				),
 				taskSerializer,
 				"test-current-cluster",
 			)

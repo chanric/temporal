@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/chasm/lib/historydlq"
 	"go.temporal.io/server/client"
 	"go.temporal.io/server/common/clock"
 	"go.temporal.io/server/common/cluster"
@@ -160,5 +161,6 @@ type unusedDependencies struct {
 	cache.Cache
 	chasm.Engine
 	ChasmRegistry *chasm.Registry
+	DLQClient     *historydlq.Client
 	worker_versioning.VersionMembershipAndReactivationStatusCache
 }

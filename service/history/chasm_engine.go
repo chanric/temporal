@@ -1006,7 +1006,12 @@ func (e *ChasmEngine) createNewExecutionWithUpdate(
 	}
 
 	if updateFn != nil {
-		if err = updateFn(chasmContext, rootComponent); err != nil {
+		// Mark the root mutable again so children added by the update are synchronized.
+		component, err := chasmTree.Component(chasmContext, executionRef)
+		if err != nil {
+			return newExecutionParams{}, err
+		}
+		if err = updateFn(chasmContext, component); err != nil {
 			return newExecutionParams{}, err
 		}
 	}

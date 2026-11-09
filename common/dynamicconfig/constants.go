@@ -3126,6 +3126,12 @@ a low priority workflow lock before subsequent stream sender conversion attempts
 		true,
 		`HistoryTaskDLQEnabled enables the history task DLQ. This applies to internal tasks like transfer and timer tasks.`,
 	)
+	HistoryTaskDLQUseCHASM = NewGlobalBoolSetting(
+		"history.TaskDLQUseCHASM",
+		false,
+		`HistoryTaskDLQUseCHASM selects CHASM for new history DLQ writes through the shared writer.
+History replication also requires history.enableHistoryReplicationDLQV2.`,
+	)
 	HistoryTaskDLQUnexpectedErrorAttempts = NewGlobalIntSetting(
 		"history.TaskDLQUnexpectedErrorAttempts",
 		70, // 70 attempts takes about an hour

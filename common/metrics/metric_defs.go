@@ -1305,6 +1305,14 @@ var (
 		"dlq_message_count",
 		WithDescription("The number of messages currently in DLQ."),
 	)
+	HistoryDLQSegmentWarningThresholdCrossed = NewCounterDef(
+		"history_dlq_segment_warning_threshold_crossed",
+		WithDescription("Successful history DLQ appends that cross the segment retained-byte warning threshold."),
+	)
+	HistoryDLQSegmentBudgetExceeded = NewCounterDef(
+		"history_dlq_segment_budget_exceeded",
+		WithDescription("History DLQ enqueue attempts rejected by the segment retained-byte budget, including retries."),
+	)
 	DataLossCounter = NewCounterDef(
 		"data_loss_errors",
 		WithDescription("Total number of data loss errors encountered. This is a high cardinality metrics that has namespace, workflowID and runID tags."+

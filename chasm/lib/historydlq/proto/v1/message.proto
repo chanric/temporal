@@ -7,16 +7,9 @@ import "temporal/server/api/common/v1/dlq.proto";
 
 option go_package = "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb;historydlqpb";
 
-// MessageStatus describes whether a DLQ message still needs operator handling.
-enum MessageStatus {
-  MESSAGE_STATUS_UNSPECIFIED = 0; // No status was specified; new messages must explicitly use PENDING.
-  MESSAGE_STATUS_PENDING = 1; // The message remains open without automatic expiration.
-  MESSAGE_STATUS_RESOLVED = 2; // The message no longer needs operator handling.
-}
-
-// Resolution records why a DLQ message was resolved.
+// Resolution identifies the operation that removes a DLQ entry.
 enum Resolution {
-  RESOLUTION_UNSPECIFIED = 0; // The message has not been resolved.
+  RESOLUTION_UNSPECIFIED = 0; // No resolution was specified.
   RESOLUTION_MERGED = 1; // The task was accepted back into processing, but may still fail during execution.
   RESOLUTION_PURGED = 2; // The operator discarded the task without re-enqueueing it.
 }
@@ -33,38 +26,20 @@ message TaskIdentity {
   string business_id = 4;
   // Original execution Run ID.
   string run_id = 5;
-  // Original execution archetype; zero is permitted for legacy workflow tasks.
+  // Original execution archetype; zero is permitted for workflow tasks.
   uint32 archetype_id = 6;
 }
 
-// MessageState contains metadata only; the HistoryTask lives in a separate DATA node.
-message MessageState {
-  // Queue containing this message.
-  temporal.server.api.common.v1.HistoryDLQKey queue = 1;
-  // Identity used to derive the stable DLQ Business ID.
-  TaskIdentity original = 2;
-  // Server-assigned numeric bound for operator requests; collisions are allowed.
-  int64 message_id = 3;
-  // Server time (ns) assigned once when the execution is created.
-  google.protobuf.Timestamp enqueued_at = 4;
-  // Pending messages remain open without expiration.
-  MessageStatus status = 5;
-  // Terminal resolution reason, unset while pending.
-  Resolution resolution = 6;
-  // Time (ns) of the first successful resolution, unset while pending.
-  google.protobuf.Timestamp resolved_at = 7;
-}
-
-// SegmentState contains the identity and storage budget of one bounded DLQ segment.
+// SegmentState contains the identity and storage budget of one producer-routed DLQ segment.
 message SegmentState {
   // Queue whose entries are stored in this segment.
   temporal.server.api.common.v1.HistoryDLQKey queue = 1;
-  // Source shard whose task IDs belong to this segment.
+  // Source shard whose tasks belong to this segment.
   int32 source_shard_id = 2;
-  // First source task ID in the segment's fixed range.
-  int64 task_id_range_start = 3;
   // Conservative retained-byte budget, including metadata and framework reserves.
   int64 retained_bytes = 4;
+  // Producer-hash bucket assigned to this segment.
+  uint32 bucket_id = 5;
 }
 
 // EntryState contains metadata for one task in a DLQ segment.
@@ -75,21 +50,13 @@ message EntryState {
   int64 message_id = 2;
   // Server time assigned once when the entry is accepted.
   google.protobuf.Timestamp enqueued_at = 3;
-  // Pending entries remain open without expiration.
-  MessageStatus status = 4;
-  // Terminal resolution reason, unset while pending.
-  Resolution resolution = 5;
-  // Time of the first successful resolution, unset while pending.
-  google.protobuf.Timestamp resolved_at = 6;
   // Serialized HistoryTask size, released from the segment budget on resolution.
   int64 payload_size_bytes = 7;
 }
 
 // MessageRef addresses one exact entry in a CHASM DLQ segment.
 message MessageRef {
-  reserved 1;
-  reserved "system_namespace_id";
-  // Stable segment Business ID derived from queue, source shard, and task-ID range.
+  // Stable segment Business ID derived from queue, source shard, and producer bucket.
   string business_id = 2;
   // Exact accepted segment run, required for reads and resolution.
   string run_id = 3;
@@ -102,3 +69,55 @@ message MessageRef {
   // Stable key for the exact entry in the segment.
   string entry_key = 7;
 }
+
+// StoredMessage contains authoritative metadata and the task DATA payload.
+message StoredMessage {
+  // Exact CHASM message reference.
+  MessageRef ref = 1;
+  // Original task identity and execution metadata, independent of DLQ placement.
+  TaskIdentity source_task_identity = 2;
+  // Serialized task and original source shard.
+  temporal.server.api.common.v1.HistoryTask task = 5;
+}
+
+message EnqueueRequest {
+  // Routing namespace, always the cluster-local temporal-system ID.
+  string system_namespace_id = 1;
+  // Routing Business ID derived from the queue, source shard, and producer bucket.
+  string business_id = 2;
+  // Queue containing this failed task.
+  temporal.server.api.common.v1.HistoryDLQKey queue = 3;
+  // Stable original persisted task identity and preserved execution metadata.
+  TaskIdentity source_task_identity = 4;
+  // Serialized failed task, retaining its original source shard.
+  temporal.server.api.common.v1.HistoryTask task = 5;
+}
+
+message EnqueueResponse {
+  // Accepted entry; retries reuse its ID and time while the entry exists.
+  MessageRef ref = 1;
+}
+
+message ReadMessageRequest {
+  // Routing namespace, always the cluster-local temporal-system ID.
+  string system_namespace_id = 2;
+  // Full execution reference, required even when numeric IDs collide.
+  MessageRef ref = 1;
+}
+
+message ReadMessageResponse {
+  // Authoritative metadata and payload for an existing entry.
+  StoredMessage message = 1;
+}
+
+message ResolveRequest {
+  // Segment Business ID, Run ID, entry key, and queue identify the entry.
+  // Message ID and enqueue time are ignored.
+  MessageRef ref = 1;
+  // MERGED after re-enqueue acceptance, or PURGED without re-enqueue.
+  Resolution resolution = 2;
+  // Routing namespace, always the cluster-local temporal-system ID.
+  string system_namespace_id = 4;
+}
+
+message ResolveResponse {}

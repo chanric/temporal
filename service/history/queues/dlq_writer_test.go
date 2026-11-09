@@ -18,6 +18,7 @@ import (
 	"go.temporal.io/server/common/metrics/metricstest"
 	"go.temporal.io/server/common/namespace"
 	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/common/persistence/serialization"
 	"go.temporal.io/server/service/history/queues"
 	"go.temporal.io/server/service/history/queues/queuestest"
 	"go.temporal.io/server/service/history/tasks"
@@ -55,7 +56,18 @@ func TestDLQWriter_ErrGetNamespaceName(t *testing.T) {
 	logger := &logRecorder{SnTaggedLogger: log.NewTestLogger()}
 	metricsHandler := metricstest.NewCaptureHandler()
 	capture := metricsHandler.StartCapture()
-	writer := queues.NewDLQWriter(queueWriter, metricsHandler, logger, namespaceRegistry, chasm.NewRegistry(log.NewTestLogger()))
+	writer := queues.NewDLQWriter(
+		queues.NewDLQTaskEnqueuer(
+			queueWriter,
+			nil,
+			serialization.NewSerializer(),
+			func() bool { return false },
+		),
+		metricsHandler,
+		logger,
+		namespaceRegistry,
+		chasm.NewRegistry(log.NewTestLogger()),
+	)
 	task := &tasks.WorkflowTask{
 		WorkflowKey: definition.WorkflowKey{
 			NamespaceID: string(tests.NamespaceID),
@@ -107,7 +119,18 @@ func TestDLQWriter_Ok(t *testing.T) {
 	logger := &logRecorder{SnTaggedLogger: log.NewTestLogger()}
 	metricsHandler := metricstest.NewCaptureHandler()
 	capture := metricsHandler.StartCapture()
-	writer := queues.NewDLQWriter(queueWriter, metricsHandler, logger, namespaceRegistry, chasm.NewRegistry(log.NewTestLogger()))
+	writer := queues.NewDLQWriter(
+		queues.NewDLQTaskEnqueuer(
+			queueWriter,
+			nil,
+			serialization.NewSerializer(),
+			func() bool { return false },
+		),
+		metricsHandler,
+		logger,
+		namespaceRegistry,
+		chasm.NewRegistry(log.NewTestLogger()),
+	)
 	task := &tasks.WorkflowTask{
 		WorkflowKey: definition.WorkflowKey{
 			NamespaceID: string(tests.NamespaceID),
@@ -160,7 +183,18 @@ func TestDLQWriter_ConcurrentWrites(t *testing.T) {
 	namespaceRegistry.EXPECT().GetNamespaceByID(gomock.Any()).Return(&namespace.Namespace{}, nil).AnyTimes()
 	logger := &logRecorder{SnTaggedLogger: log.NewTestLogger()}
 	metricsHandler := metricstest.NewCaptureHandler()
-	writer := queues.NewDLQWriter(queueWriter, metricsHandler, logger, namespaceRegistry, chasm.NewRegistry(log.NewTestLogger()))
+	writer := queues.NewDLQWriter(
+		queues.NewDLQTaskEnqueuer(
+			queueWriter,
+			nil,
+			serialization.NewSerializer(),
+			func() bool { return false },
+		),
+		metricsHandler,
+		logger,
+		namespaceRegistry,
+		chasm.NewRegistry(log.NewTestLogger()),
+	)
 
 	const numConcurrentWrites = 50
 	var g errgroup.Group
@@ -239,7 +273,18 @@ func TestDLQWriter_ConcurrentWritesDifferentQueues(t *testing.T) {
 	namespaceRegistry.EXPECT().GetNamespaceByID(gomock.Any()).Return(&namespace.Namespace{}, nil).AnyTimes()
 	logger := &logRecorder{SnTaggedLogger: log.NewTestLogger()}
 	metricsHandler := metricstest.NewCaptureHandler()
-	writer := queues.NewDLQWriter(queueWriter, metricsHandler, logger, namespaceRegistry, chasm.NewRegistry(log.NewTestLogger()))
+	writer := queues.NewDLQWriter(
+		queues.NewDLQTaskEnqueuer(
+			queueWriter,
+			nil,
+			serialization.NewSerializer(),
+			func() bool { return false },
+		),
+		metricsHandler,
+		logger,
+		namespaceRegistry,
+		chasm.NewRegistry(log.NewTestLogger()),
+	)
 
 	const numConcurrentWrites = 50
 	const numQueues = 5

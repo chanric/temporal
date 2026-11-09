@@ -2327,7 +2327,15 @@ func (s *chasmEngineSuite) TestUpdateWithStartExecution_NotFound() {
 			createdRunID = request.NewWorkflowSnapshot.ExecutionState.RunId
 			s.NotEmpty(createdRunID)
 
-			s.Len(request.NewWorkflowSnapshot.ChasmNodes, 1)
+			s.Len(request.NewWorkflowSnapshot.ChasmNodes, 2)
+			for path, node := range request.NewWorkflowSnapshot.ChasmNodes {
+				if path == "" {
+					continue
+				}
+				data := &persistencespb.ActivityInfo{}
+				s.NoError(serialization.Decode(node.Data, data))
+				s.Equal("child-added-by-update", data.ActivityId)
+			}
 			newNode, ok := request.NewWorkflowSnapshot.ChasmNodes[""]
 			s.True(ok)
 
@@ -2360,6 +2368,7 @@ func (s *chasmEngineSuite) TestUpdateWithStartExecution_NotFound() {
 			tc, ok := component.(*testComponent)
 			s.True(ok)
 			tc.ActivityInfo.ActivityId = "updated-" + tc.ActivityInfo.ActivityId
+			tc.Data = chasm.NewDataField(ctx, &persistencespb.ActivityInfo{ActivityId: "child-added-by-update"})
 			return nil
 		},
 	)
@@ -2375,6 +2384,30 @@ func (s *chasmEngineSuite) TestUpdateWithStartExecution_NotFound() {
 	deserializedRef, err := chasm.DeserializeComponentRef(result.ExecutionRef)
 	s.NoError(err)
 	s.Equal(result.ExecutionKey, deserializedRef.ExecutionKey)
+}
+
+func (s *chasmEngineSuite) TestUpdateWithStartExecution_CreateConflict() {
+	tv := testvars.New(s.T())
+	key := chasm.ExecutionKey{NamespaceID: string(tests.NamespaceID), BusinessID: tv.WorkflowID()}
+	s.mockExecutionManager.EXPECT().GetCurrentExecution(gomock.Any(), gomock.Any()).
+		Return(nil, serviceerror.NewNotFound("missing execution"))
+	s.mockExecutionManager.EXPECT().CreateWorkflowExecution(gomock.Any(), gomock.Any()).
+		Return(nil, s.currentRunConditionFailedErr(
+			tv,
+			enumsspb.WORKFLOW_EXECUTION_STATE_RUNNING,
+			enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
+		))
+	result, err := s.engine.UpdateWithStartExecution(
+		s.T().Context(),
+		chasm.NewComponentRef[*testComponent](key),
+		s.newTestExecutionFn("candidate"),
+		func(ctx chasm.MutableContext, component chasm.Component) error {
+			component.(*testComponent).Data = chasm.NewDataField(ctx, &persistencespb.ActivityInfo{ActivityId: "candidate-child"})
+			return nil
+		},
+	)
+	s.ErrorAs(err, new(*serviceerror.Unavailable))
+	s.Equal(chasm.EngineUpdateWithStartExecutionResult{}, result)
 }
 
 func (s *chasmEngineSuite) TestUpdateWithStartExecution_NotFound_SetsContextMetadata() {
@@ -2854,6 +2887,7 @@ type testComponent struct {
 	chasm.UnimplementedComponent
 
 	ActivityInfo *persistencespb.ActivityInfo
+	Data         chasm.Field[*persistencespb.ActivityInfo]
 }
 
 func (l *testComponent) LifecycleState(_ chasm.Context) chasm.LifecycleState {

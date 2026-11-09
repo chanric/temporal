@@ -15,12 +15,12 @@ func testRequest() EnqueueRequest {
 	}
 }
 
-func TestBusinessID(t *testing.T) {
+func TestEntryKeyStableIdentity(t *testing.T) {
 	t.Parallel()
 	req := testRequest()
-	id, err := BusinessID(req.Queue, req.SourceTaskIdentity)
+	id, err := EntryKey(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
-	retryID, err := BusinessID(req.Queue, req.SourceTaskIdentity)
+	retryID, err := EntryKey(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
 	require.Equal(t, id, retryID)
 	changes := map[string]func(*EnqueueRequest){
@@ -36,7 +36,7 @@ func TestBusinessID(t *testing.T) {
 			t.Parallel()
 			changed := req
 			change(&changed)
-			other, err := BusinessID(changed.Queue, changed.SourceTaskIdentity)
+			other, err := EntryKey(changed.Queue, changed.SourceTaskIdentity)
 			require.NoError(t, err)
 			require.NotEqual(t, id, other)
 		})
@@ -48,7 +48,7 @@ func TestSegmentBusinessIDAndEntryKey(t *testing.T) {
 	req := testRequest()
 	segmentID, err := SegmentBusinessID(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
-	require.Equal(t, "historydlq:segment:v1:b9ba99e52017e06f6c32221000e633da99cbacbed3cac7764485508f0ff2e885", segmentID)
+	require.Equal(t, "historydlq:segment:v0:bc6630da1fbb56f1511981a83767fd8a42e5b20bbffa2b2e84b79d57c4389de8", segmentID)
 	entryKey, err := EntryKey(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
 	require.Equal(t, "4a76d13b0b77cdd05d1b1197dcd6dcdd560b5984e9e1b047635b1e146578e1bb", entryKey)
@@ -63,19 +63,17 @@ func TestSegmentBusinessIDAndEntryKey(t *testing.T) {
 	require.NotEqual(t, entryKey, otherEntryKey)
 }
 
-func TestSegmentBusinessIDTaskRanges(t *testing.T) {
+func TestSegmentBusinessIDTaskIDsDoNotChangePool(t *testing.T) {
 	t.Parallel()
 	req := testRequest()
 	for _, tc := range []struct {
-		name       string
-		firstID    int64
-		secondID   int64
-		wantSameID bool
+		name     string
+		firstID  int64
+		secondID int64
 	}{
-		{"first range", 1, 128, true},
-		{"next range", 128, 129, false},
-		{"second range", 129, 256, true},
-		{"last range", math.MaxInt64 - 126, math.MaxInt64, true},
+		{"first and distant", 1, 128},
+		{"distant IDs", 128, 1 << 40},
+		{"last IDs", math.MaxInt64 - 126, math.MaxInt64},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -85,11 +83,115 @@ func TestSegmentBusinessIDTaskRanges(t *testing.T) {
 			require.NoError(t, err)
 			secondID, err := SegmentBusinessID(req.Queue, second)
 			require.NoError(t, err)
-			require.Equal(t, tc.wantSameID, firstID == secondID)
+			require.Equal(t, firstID, secondID)
 			second.SourceShardID++
 			otherShardID, err := SegmentBusinessID(req.Queue, second)
 			require.NoError(t, err)
 			require.NotEqual(t, firstID, otherShardID)
+		})
+	}
+}
+
+func TestSegmentBucketID(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		identity TaskIdentity
+		want     uint32
+	}{
+		{"bucket zero", TaskIdentity{NamespaceID: "namespace-9", ArchetypeID: 9, BusinessID: "business-9"}, 0},
+		{"bucket one", TaskIdentity{NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"}, 1},
+		{"bucket two", TaskIdentity{NamespaceID: "namespace-2", ArchetypeID: 2, BusinessID: "business-2"}, 2},
+		{"bucket three", TaskIdentity{NamespaceID: "namespace-1", ArchetypeID: 1, BusinessID: "business-1"}, 3},
+		{"empty metadata", TaskIdentity{}, 0},
+		{"namespace participates", TaskIdentity{NamespaceID: "namespace-other", ArchetypeID: 1, BusinessID: "workflow"}, 0},
+		{"archetype participates", TaskIdentity{NamespaceID: "namespace", ArchetypeID: 2, BusinessID: "workflow"}, 2},
+		{"business ID participates", TaskIdentity{NamespaceID: "namespace", ArchetypeID: 1, BusinessID: "workflow-other"}, 2},
+		{"delimiter in namespace", TaskIdentity{NamespaceID: "a:b", ArchetypeID: 1, BusinessID: "c"}, 3},
+		{"delimiter in business ID", TaskIdentity{NamespaceID: "a", ArchetypeID: 1, BusinessID: "b:c"}, 1},
+		{"quotes and escapes", TaskIdentity{NamespaceID: "namespace:%q", ArchetypeID: 1, BusinessID: "business:\n"}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := SegmentBucketID(tc.identity)
+			require.Equal(t, tc.want, got)
+			require.Less(t, got, uint32(4))
+		})
+	}
+}
+
+func TestSegmentBusinessIDBucketPools(t *testing.T) {
+	t.Parallel()
+	req := testRequest()
+	for _, tc := range []struct {
+		name       string
+		producer   TaskIdentity
+		businessID string
+	}{
+		{"bucket zero", TaskIdentity{NamespaceID: "namespace-9", ArchetypeID: 9, BusinessID: "business-9"}, "historydlq:segment:v0:025659d27d3d750126345cace8e9c7622c5f587861db3bafca082bd67a547ed2"},
+		{"bucket one", TaskIdentity{NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"}, "historydlq:segment:v0:bc6630da1fbb56f1511981a83767fd8a42e5b20bbffa2b2e84b79d57c4389de8"},
+		{"bucket two", TaskIdentity{NamespaceID: "namespace-2", ArchetypeID: 2, BusinessID: "business-2"}, "historydlq:segment:v0:33291c30bf9e23b6999d928f041687694b44a6269abf3a34714194f95e8d7930"},
+		{"bucket three", TaskIdentity{NamespaceID: "namespace-1", ArchetypeID: 1, BusinessID: "business-1"}, "historydlq:segment:v0:0ba2e58fcb55415b70f4aae02427c3c2a5645eec058ea08a0b58cabfd52288ab"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			producer := req.SourceTaskIdentity
+			producer.NamespaceID = tc.producer.NamespaceID
+			producer.ArchetypeID = tc.producer.ArchetypeID
+			producer.BusinessID = tc.producer.BusinessID
+			got, err := SegmentBusinessID(req.Queue, producer)
+			require.NoError(t, err)
+			require.Equal(t, tc.businessID, got)
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*TaskIdentity)
+	}{
+		{"task ID", func(identity *TaskIdentity) { identity.TaskID += 1 << 40 }},
+		{"run ID", func(identity *TaskIdentity) { identity.RunID = "another-run" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			changed := req.SourceTaskIdentity
+			tc.mutate(&changed)
+			got, err := SegmentBusinessID(req.Queue, changed)
+			require.NoError(t, err)
+			want, err := SegmentBusinessID(req.Queue, req.SourceTaskIdentity)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestSegmentProducerRouting(t *testing.T) {
+	t.Parallel()
+	req := testRequest()
+	require.Equal(t, uint32(1), SegmentBucketID(req.SourceTaskIdentity))
+	baseID, err := SegmentBusinessID(req.Queue, req.SourceTaskIdentity)
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name       string
+		mutate     func(*EnqueueRequest)
+		wantBucket uint32
+	}{
+		{"namespace", func(r *EnqueueRequest) { r.SourceTaskIdentity.NamespaceID += "-other" }, 0},
+		{"archetype", func(r *EnqueueRequest) { r.SourceTaskIdentity.ArchetypeID++ }, 2},
+		{"business", func(r *EnqueueRequest) { r.SourceTaskIdentity.BusinessID += "-other" }, 2},
+		{"category", func(r *EnqueueRequest) { r.Queue.CategoryID++ }, 1},
+		{"source cluster", func(r *EnqueueRequest) { r.Queue.SourceCluster += "-other" }, 1},
+		{"target cluster", func(r *EnqueueRequest) { r.Queue.TargetCluster += "-other" }, 1},
+		{"source shard", func(r *EnqueueRequest) { r.SourceTaskIdentity.SourceShardID++ }, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			changed := req
+			tc.mutate(&changed)
+			require.Equal(t, tc.wantBucket, SegmentBucketID(changed.SourceTaskIdentity))
+			changedID, err := SegmentBusinessID(changed.Queue, changed.SourceTaskIdentity)
+			require.NoError(t, err)
+			require.NotEqual(t, baseID, changedID)
 		})
 	}
 }
@@ -117,7 +219,6 @@ func TestMessageID(t *testing.T) {
 			require.Equal(t, (tc.wantMilliseconds<<20)|int64(582075), id)
 			require.GreaterOrEqual(t, id, int64(0))
 			require.Less(t, id, int64(1<<61))
-			require.Zero(t, id>>61, "versions 1–3 are reserved")
 			require.Equal(t, tc.wantMilliseconds, (id>>20)&((1<<41)-1))
 			require.Equal(t, int64(582075), id&((1<<20)-1))
 		})
@@ -136,9 +237,9 @@ func TestMessageID(t *testing.T) {
 			require.Zero(t, id)
 		})
 	}
-	businessID, err := BusinessID(req.Queue, req.SourceTaskIdentity)
+	businessID, err := EntryKey(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
-	require.Equal(t, "historydlq:v1:4a76d13b0b77cdd05d1b1197dcd6dcdd560b5984e9e1b047635b1e146578e1bb", businessID)
+	require.Equal(t, "4a76d13b0b77cdd05d1b1197dcd6dcdd560b5984e9e1b047635b1e146578e1bb", businessID)
 }
 
 func TestIdentityRequiresQueueAndPersistedTask(t *testing.T) {
@@ -154,7 +255,7 @@ func TestIdentityRequiresQueueAndPersistedTask(t *testing.T) {
 			t.Parallel()
 			req := testRequest()
 			change(&req)
-			id, err := BusinessID(req.Queue, req.SourceTaskIdentity)
+			id, err := EntryKey(req.Queue, req.SourceTaskIdentity)
 			require.Error(t, err)
 			require.Empty(t, id)
 			id, err = SegmentBusinessID(req.Queue, req.SourceTaskIdentity)

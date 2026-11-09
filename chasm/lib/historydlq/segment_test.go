@@ -2,6 +2,8 @@ package historydlq
 
 import (
 	"bytes"
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -17,7 +19,6 @@ import (
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/common/testing/protorequire"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -38,7 +39,7 @@ func TestSegmentNamespace(t *testing.T) {
 			key := ctx.ExecutionKey()
 			key.NamespaceID = tc.namespaceID
 			ctx.HandleExecutionKey = func() chasm.ExecutionKey { return key }
-			segment, err := NewSegment(ctx, componentRequest())
+			segment, err := NewSegment(ctx, testEnqueueRequest())
 			require.ErrorAs(t, err, new(*serviceerror.InvalidArgument))
 			require.Nil(t, segment)
 		})
@@ -52,10 +53,11 @@ func TestSegmentNamespaceAccess(t *testing.T) {
 			t.Parallel()
 			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 			ctx := newSegmentContext(&now)
-			req := componentRequest()
+			req := testEnqueueRequest()
 			segment, err := NewSegment(ctx, req)
 			require.NoError(t, err)
-			ref, err := segment.Append(ctx, req)
+			refResult, err := segment.Append(ctx, req)
+			ref := refResult.MessageRef
 			require.NoError(t, err)
 			before := proto.Clone(segment.SegmentState)
 			wrongCtx := newSegmentContext(&now)
@@ -82,7 +84,7 @@ func TestSegmentNamespaceAccess(t *testing.T) {
 			require.Len(t, segment.Entries, 1)
 			stored, err := segment.ReadEntry(ctx, ref)
 			require.NoError(t, err)
-			require.Equal(t, historydlqpb.MESSAGE_STATUS_PENDING, stored.Status)
+			require.NotNil(t, stored.Task)
 			protorequire.ProtoEqual(t, req.Task, stored.Task)
 		})
 	}
@@ -90,7 +92,7 @@ func TestSegmentNamespaceAccess(t *testing.T) {
 
 func TestSegmentQueueIdentity(t *testing.T) {
 	t.Parallel()
-	req := componentRequest()
+	req := testEnqueueRequest()
 	segmentID, err := SegmentBusinessID(req.Queue, req.SourceTaskIdentity)
 	require.NoError(t, err)
 	retryID, err := SegmentBusinessID(req.Queue, req.SourceTaskIdentity)
@@ -118,7 +120,7 @@ func TestSegmentQueueIdentity(t *testing.T) {
 	require.Equal(t, req.Queue.TargetCluster, segment.GetQueue().GetTargetCluster())
 	require.Empty(t, segment.Entries)
 	require.Equal(t, int32(7), segment.GetSourceShardId())
-	require.Equal(t, int64(1), segment.GetTaskIdRangeStart())
+	require.Equal(t, SegmentBucketID(req.SourceTaskIdentity), segment.GetBucketId())
 	require.Equal(t, []chasm.SearchAttributeKeyValue{
 		categorySearchAttribute.Value(int64(req.Queue.CategoryID)),
 		sourceSearchAttribute.Value(req.Queue.SourceCluster),
@@ -132,15 +134,17 @@ func TestSegmentAppendDistinctEntries(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 123, time.UTC)
 	ctx := newSegmentContext(&now)
-	first := componentRequest()
+	first := testEnqueueRequest()
 	segment, err := NewSegment(ctx, first)
 	require.NoError(t, err)
-	firstRef, err := segment.Append(ctx, first)
+	firstRefResult, err := segment.Append(ctx, first)
+	firstRef := firstRefResult.MessageRef
 	require.NoError(t, err)
-	second := componentRequest()
+	second := testEnqueueRequest()
 	second.SourceTaskIdentity.TaskID++
 	second.Task = proto.Clone(second.Task).(*commonspb.HistoryTask)
-	secondRef, err := segment.Append(ctx, second)
+	secondRefResult, err := segment.Append(ctx, second)
+	secondRef := secondRefResult.MessageRef
 	require.NoError(t, err)
 
 	require.NotEqual(t, firstRef.EntryKey, secondRef.EntryKey)
@@ -154,7 +158,7 @@ func TestSegmentAppendDistinctEntries(t *testing.T) {
 	stored, err := segment.ReadEntry(ctx, secondRef)
 	require.NoError(t, err)
 	require.Equal(t, secondRef, stored.Ref)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_PENDING, stored.Status)
+	require.NotNil(t, stored.Task)
 	protorequire.ProtoEqual(t, second.Task, stored.Task)
 	second.Task.Blob.Data[0] = 'x'
 	stored.Task.Blob.Data[0] = 'y'
@@ -167,13 +171,15 @@ func TestSegmentAppendDuplicate(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	req := componentRequest()
+	req := testEnqueueRequest()
 	segment, err := NewSegment(ctx, req)
 	require.NoError(t, err)
-	first, err := segment.Append(ctx, req)
+	firstResult, err := segment.Append(ctx, req)
+	first := firstResult.MessageRef
 	require.NoError(t, err)
 	now = now.Add(time.Hour)
-	duplicate, err := segment.Append(ctx, req)
+	duplicateResult, err := segment.Append(ctx, req)
+	duplicate := duplicateResult.MessageRef
 	require.NoError(t, err)
 	require.Equal(t, first, duplicate)
 	require.Len(t, segment.Entries, 1)
@@ -183,45 +189,76 @@ func TestSegmentRetryAfterResolution(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	req := componentRequest()
+	req := testEnqueueRequest()
 	segment, err := NewSegment(ctx, req)
 	require.NoError(t, err)
-	accepted, err := segment.Append(ctx, req)
+	acceptedResult, err := segment.Append(ctx, req)
+	accepted := acceptedResult.MessageRef
 	require.NoError(t, err)
 	require.NoError(t, segment.ResolveEntry(ctx, accepted, historydlqpb.RESOLUTION_MERGED))
 	now = now.Add(time.Hour)
-	retry, err := segment.Append(ctx, req)
+	retryResult, err := segment.Append(ctx, req)
+	retry := retryResult.MessageRef
 	require.NoError(t, err)
-	require.Equal(t, accepted, retry)
+	require.Equal(t, accepted.EntryKey, retry.EntryKey)
+	require.NotEqual(t, accepted, retry)
 	stored, err := segment.ReadEntry(ctx, retry)
 	require.NoError(t, err)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_RESOLVED, stored.Status)
-	require.Equal(t, historydlqpb.RESOLUTION_MERGED, stored.Resolution)
+	require.NotNil(t, stored.Task)
+	protorequire.ProtoEqual(t, req.Task, stored.Task)
+	require.NoError(t, segment.ResolveEntry(ctx, accepted, historydlqpb.RESOLUTION_PURGED))
+	_, err = segment.ReadEntry(ctx, retry)
+	require.ErrorAs(t, err, new(*serviceerror.NotFound))
 }
 
 func TestSegmentResolveOneEntry(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	first := componentRequest()
-	second := componentRequest()
+	first := testEnqueueRequest()
+	second := testEnqueueRequest()
 	second.SourceTaskIdentity.TaskID++
 	segment, err := NewSegment(ctx, first)
 	require.NoError(t, err)
-	firstRef, err := segment.Append(ctx, first)
+	firstRefResult, err := segment.Append(ctx, first)
+	firstRef := firstRefResult.MessageRef
 	require.NoError(t, err)
-	secondRef, err := segment.Append(ctx, second)
+	secondRefResult, err := segment.Append(ctx, second)
+	secondRef := secondRefResult.MessageRef
 	require.NoError(t, err)
 
 	require.NoError(t, segment.ResolveEntry(ctx, firstRef, historydlqpb.RESOLUTION_PURGED))
 	require.NoError(t, segment.ResolveEntry(ctx, firstRef, historydlqpb.RESOLUTION_MERGED))
-	resolved, err := segment.ReadEntry(ctx, firstRef)
-	require.NoError(t, err)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_RESOLVED, resolved.Status)
-	require.Equal(t, historydlqpb.RESOLUTION_PURGED, resolved.Resolution)
+	_, err = segment.ReadEntry(ctx, firstRef)
+	require.ErrorAs(t, err, new(*serviceerror.NotFound))
+	require.NotContains(t, segment.Entries, firstRef.EntryKey)
 	pending, err := segment.ReadEntry(ctx, secondRef)
 	require.NoError(t, err)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_PENDING, pending.Status)
+	require.NotNil(t, pending.Task)
+}
+
+func TestSegmentLateRetryRecreatesEntryWithSameClock(t *testing.T) {
+	t.Parallel()
+	for _, reason := range []historydlqpb.Resolution{historydlqpb.RESOLUTION_MERGED, historydlqpb.RESOLUTION_PURGED} {
+		t.Run(reason.String(), func(t *testing.T) {
+			t.Parallel()
+			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+			ctx := newSegmentContext(&now)
+			req := testEnqueueRequest()
+			segment, err := NewSegment(ctx, req)
+			require.NoError(t, err)
+			first, err := segment.Append(ctx, req)
+			require.NoError(t, err)
+			require.NoError(t, segment.ResolveEntry(ctx, first.MessageRef, reason))
+			retry, err := segment.Append(ctx, req)
+			require.NoError(t, err)
+			stored, err := segment.ReadEntry(ctx, retry.MessageRef)
+			require.NoError(t, err)
+			require.NotNil(t, stored.Task)
+			protorequire.ProtoEqual(t, req.Task, stored.Task)
+			require.Len(t, segment.Entries, 1)
+		})
+	}
 }
 
 func TestSegmentReferenceValidation(t *testing.T) {
@@ -235,28 +272,32 @@ func TestSegmentReferenceValidation(t *testing.T) {
 		{"run ID", func(ref *MessageRef) { ref.RunID = "replacement-run" }, true},
 		{"entry key", func(ref *MessageRef) { ref.EntryKey = "other-entry" }, true},
 		{"queue", func(ref *MessageRef) { ref.Queue.TargetCluster = "other-target" }, false},
-		{"message ID", func(ref *MessageRef) { ref.MessageID++ }, false},
-		{"enqueue time", func(ref *MessageRef) { ref.EnqueuedAt = ref.EnqueuedAt.Add(time.Nanosecond) }, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 			ctx := newSegmentContext(&now)
-			req := componentRequest()
+			req := testEnqueueRequest()
 			segment, err := NewSegment(ctx, req)
 			require.NoError(t, err)
-			ref, err := segment.Append(ctx, req)
+			refResult, err := segment.Append(ctx, req)
+			ref := refResult.MessageRef
 			require.NoError(t, err)
 			before := proto.Clone(segment.SegmentState)
 			invalid := ref
 			tc.change(&invalid)
 			_, readErr := segment.ReadEntry(ctx, invalid)
 			resolveErr := segment.ResolveEntry(ctx, invalid, historydlqpb.RESOLUTION_PURGED)
-			for _, err := range []error{readErr, resolveErr} {
-				if tc.notFound {
-					require.ErrorAs(t, err, new(*serviceerror.NotFound))
-				} else {
-					require.ErrorAs(t, err, new(*serviceerror.FailedPrecondition))
+			if tc.name == "entry key" {
+				require.ErrorAs(t, readErr, new(*serviceerror.NotFound))
+				require.NoError(t, resolveErr)
+			} else {
+				for _, err := range []error{readErr, resolveErr} {
+					if tc.notFound {
+						require.ErrorAs(t, err, new(*serviceerror.NotFound))
+					} else {
+						require.ErrorAs(t, err, new(*serviceerror.FailedPrecondition))
+					}
 				}
 			}
 			protorequire.ProtoEqual(t, before, segment.SegmentState)
@@ -264,7 +305,10 @@ func TestSegmentReferenceValidation(t *testing.T) {
 			require.NoError(t, err)
 			protorequire.ProtoEqual(t, req.Task, stored.Task)
 			stored.Task = nil
-			require.Equal(t, StoredMessage{Ref: ref, SourceTaskIdentity: req.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_PENDING}, stored)
+			require.Equal(t, StoredMessage{
+				Ref:                ref,
+				SourceTaskIdentity: req.SourceTaskIdentity,
+			}, stored)
 		})
 	}
 }
@@ -286,12 +330,13 @@ func TestSegmentPersistence(t *testing.T) {
 	}
 	root := chasm.NewEmptyTree(registry, backend, chasm.DefaultPathEncoder, log.NewTestLogger(), metrics.NoopMetricsHandler)
 	ctx := chasm.NewMutableContext(t.Context(), root)
-	req := componentRequest()
+	req := testEnqueueRequest()
 	segment, err := NewSegment(ctx, req)
 	require.NoError(t, err)
 	admissionTime := now
 	now = now.Add(time.Second)
-	ref, err := segment.Append(ctx, req)
+	refResult, err := segment.Append(ctx, req)
+	ref := refResult.MessageRef
 	require.NoError(t, err)
 	wantID, err := messageID(req.Queue, req.SourceTaskIdentity, admissionTime)
 	require.NoError(t, err)
@@ -324,152 +369,254 @@ func TestSegmentPersistence(t *testing.T) {
 		require.Equal(t, want, stored)
 	}
 	reload()
-	checkStored(StoredMessage{Ref: ref, SourceTaskIdentity: req.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_PENDING, Task: req.Task})
-	duplicate, err := segment.Append(ctx, req)
+	checkStored(StoredMessage{
+		Ref:                ref,
+		SourceTaskIdentity: req.SourceTaskIdentity,
+		Task:               req.Task,
+	})
+	duplicateResult, err := segment.Append(ctx, req)
+	duplicate := duplicateResult.MessageRef
 	require.NoError(t, err)
 	require.Equal(t, ref, duplicate)
-	second := componentRequest()
+	second := testEnqueueRequest()
 	second.SourceTaskIdentity.TaskID++
-	secondRef, err := segment.Append(ctx, second)
+	secondRefResult, err := segment.Append(ctx, second)
+	secondRef := secondRefResult.MessageRef
 	require.NoError(t, err)
-	resolvedAt := ctx.Now(segment)
 	require.NoError(t, segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_PURGED))
 	mutation := reload()
-	require.Len(t, mutation.DeletedNodes, 1, "resolution must delete the task DATA node")
-	checkStored(StoredMessage{Ref: ref, SourceTaskIdentity: req.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_RESOLVED, Resolution: historydlqpb.RESOLUTION_PURGED})
-	checkStored(StoredMessage{Ref: secondRef, SourceTaskIdentity: second.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_PENDING, Task: second.Task})
-	duplicate, err = segment.Append(ctx, req)
+	require.Len(t, mutation.DeletedNodes, 2, "resolution must delete the entry component and its task DATA node")
+	require.NotContains(t, segment.Entries, ref.EntryKey)
+	_, err = segment.ReadEntry(ctx, ref)
+	require.ErrorAs(t, err, new(*serviceerror.NotFound))
+	require.NoError(t, segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_PURGED))
+	checkStored(StoredMessage{
+		Ref:                secondRef,
+		SourceTaskIdentity: second.SourceTaskIdentity,
+		Task:               second.Task,
+	})
+	duplicateResult, err = segment.Append(ctx, req)
+	duplicate = duplicateResult.MessageRef
 	require.NoError(t, err)
-	require.Equal(t, ref, duplicate)
+	require.Equal(t, ref.EntryKey, duplicate.EntryKey)
+	require.NotEqual(t, ref, duplicate)
 	require.NoError(t, segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_MERGED))
+	require.NoError(t, segment.ResolveEntry(ctx, duplicate, historydlqpb.RESOLUTION_MERGED))
 	reload()
-	entry, err := segment.entry(ctx, ref)
-	require.NoError(t, err)
-	require.Equal(t, resolvedAt, entry.GetResolvedAt().AsTime())
-	require.Equal(t, chasm.LifecycleStateCompleted, entry.LifecycleState(ctx))
 	require.Equal(t, chasm.LifecycleStateRunning, segment.LifecycleState(ctx))
-	checkStored(StoredMessage{Ref: ref, SourceTaskIdentity: req.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_RESOLVED, Resolution: historydlqpb.RESOLUTION_PURGED})
+	require.NotContains(t, segment.Entries, ref.EntryKey)
+	_, err = segment.ReadEntry(ctx, duplicate)
+	require.ErrorAs(t, err, new(*serviceerror.NotFound))
 }
 
-func TestSegmentResolveReclaimsTask(t *testing.T) {
+func TestSegmentResolveDeletesEntry(t *testing.T) {
 	t.Parallel()
 	for _, reason := range []historydlqpb.Resolution{historydlqpb.RESOLUTION_MERGED, historydlqpb.RESOLUTION_PURGED} {
 		t.Run(reason.String(), func(t *testing.T) {
 			t.Parallel()
 			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 			ctx := newSegmentContext(&now)
-			req := componentRequest()
+			req := testEnqueueRequest()
 			segment, err := NewSegment(ctx, req)
 			require.NoError(t, err)
-			ref, err := segment.Append(ctx, req)
+			emptyRetainedBytes := segment.GetRetainedBytes()
+			refResult, err := segment.Append(ctx, req)
+			ref := refResult.MessageRef
 			require.NoError(t, err)
-			entry, err := segment.entry(ctx, ref)
-			require.NoError(t, err)
-			require.Equal(t, chasm.LifecycleStateRunning, entry.LifecycleState(ctx))
 			require.NoError(t, segment.ResolveEntry(ctx, ref, reason))
-			require.Equal(t, chasm.LifecycleStateCompleted, entry.LifecycleState(ctx))
+			require.Empty(t, segment.Entries)
+			require.Equal(t, emptyRetainedBytes, segment.GetRetainedBytes())
+			require.Equal(t, pendingSearchAttribute.Value(false), segment.SearchAttributes(ctx)[3])
 			require.Equal(t, chasm.LifecycleStateRunning, segment.LifecycleState(ctx))
-			_, ok := entry.Task.TryGet(ctx)
-			require.False(t, ok)
-			stored, err := segment.ReadEntry(ctx, ref)
-			require.NoError(t, err)
-			require.Equal(t, StoredMessage{Ref: ref, SourceTaskIdentity: req.SourceTaskIdentity, Status: historydlqpb.MESSAGE_STATUS_RESOLVED, Resolution: reason}, stored)
+			_, err = segment.ReadEntry(ctx, ref)
+			require.ErrorAs(t, err, new(*serviceerror.NotFound))
+			require.NoError(t, segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_MERGED))
+			require.NoError(t, segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_PURGED))
+			require.Equal(t, emptyRetainedBytes, segment.GetRetainedBytes())
 		})
 	}
 }
 
-func TestMessageRefEntryKeyWireNumber(t *testing.T) {
+func TestSegmentResolveMissingEntryValidation(t *testing.T) {
 	t.Parallel()
-	field := (&historydlqpb.MessageRef{}).ProtoReflect().Descriptor().Fields().ByName("entry_key")
-	require.NotNil(t, field)
-	require.Equal(t, protoreflect.FieldNumber(7), field.Number())
+	for _, tc := range []struct {
+		name   string
+		change func(*MessageRef)
+	}{
+		{"business ID", func(ref *MessageRef) { ref.BusinessID = "other-segment" }},
+		{"run ID", func(ref *MessageRef) { ref.RunID = "other-run" }},
+		{"queue", func(ref *MessageRef) { ref.Queue.TargetCluster = "other-target" }},
+		{"missing entry key", func(ref *MessageRef) { ref.EntryKey = "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+			ctx := newSegmentContext(&now)
+			req := testEnqueueRequest()
+			segment, err := NewSegment(ctx, req)
+			require.NoError(t, err)
+			result, err := segment.Append(ctx, req)
+			require.NoError(t, err)
+			require.NoError(t, segment.ResolveEntry(ctx, result.MessageRef, historydlqpb.RESOLUTION_PURGED))
+			before := proto.Clone(segment.SegmentState)
+			ref := result.MessageRef
+			tc.change(&ref)
+			err = segment.ResolveEntry(ctx, ref, historydlqpb.RESOLUTION_MERGED)
+			switch tc.name {
+			case "business ID", "run ID":
+				require.ErrorAs(t, err, new(*serviceerror.NotFound))
+			case "queue":
+				require.ErrorAs(t, err, new(*serviceerror.FailedPrecondition))
+			default:
+				require.ErrorAs(t, err, new(*serviceerror.InvalidArgument))
+			}
+			protorequire.ProtoEqual(t, before, segment.SegmentState)
+			require.Empty(t, segment.Entries)
+		})
+	}
 }
 
 func TestSegmentNumericIDCollision(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	first := componentRequest()
+	first := testEnqueueRequest()
 	first.SourceTaskIdentity.TaskID = 7115
-	second := componentRequest()
+	second := testEnqueueRequest()
 	second.SourceTaskIdentity.TaskID = 7134
 	segment, err := NewSegment(ctx, first)
 	require.NoError(t, err)
-	firstRef, err := segment.Append(ctx, first)
+	firstRefResult, err := segment.Append(ctx, first)
+	firstRef := firstRefResult.MessageRef
 	require.NoError(t, err)
-	secondRef, err := segment.Append(ctx, second)
+	secondRefResult, err := segment.Append(ctx, second)
+	secondRef := secondRefResult.MessageRef
 	require.NoError(t, err)
 
 	require.Equal(t, firstRef.MessageID, secondRef.MessageID)
 	require.NotEqual(t, firstRef.EntryKey, secondRef.EntryKey)
 	require.NoError(t, segment.ResolveEntry(ctx, firstRef, historydlqpb.RESOLUTION_PURGED))
-	firstStored, err := segment.ReadEntry(ctx, firstRef)
-	require.NoError(t, err)
+	_, err = segment.ReadEntry(ctx, firstRef)
+	require.ErrorAs(t, err, new(*serviceerror.NotFound))
 	secondStored, err := segment.ReadEntry(ctx, secondRef)
 	require.NoError(t, err)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_RESOLVED, firstStored.Status)
-	require.Equal(t, historydlqpb.MESSAGE_STATUS_PENDING, secondStored.Status)
+	require.NotNil(t, secondStored.Task)
 }
 
-func TestSegmentFixedRange(t *testing.T) {
+func TestSegmentAppendSparseTaskIDs(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	req := componentRequest()
-	req.SourceTaskIdentity.TaskID = 1
+	req := testEnqueueRequest()
 	segment, err := NewSegment(ctx, req)
 	require.NoError(t, err)
-	var firstRef MessageRef
-	for taskID := int64(1); taskID <= 128; taskID++ {
+	refs := make(map[string]MessageRef)
+	for i, taskID := range []int64{1, 129, 1 << 40, math.MaxInt64} {
 		req.SourceTaskIdentity.TaskID = taskID
-		ref, err := segment.Append(ctx, req)
+		req.SourceTaskIdentity.RunID = fmt.Sprintf("run-%d", i)
+		refResult, err := segment.Append(ctx, req)
+		ref := refResult.MessageRef
 		require.NoError(t, err)
-		if taskID == 1 {
-			firstRef = ref
-		}
+		require.NotContains(t, refs, ref.EntryKey)
+		refs[ref.EntryKey] = ref
+		stored, err := segment.ReadEntry(ctx, ref)
+		require.NoError(t, err)
+		require.Equal(t, req.SourceTaskIdentity, stored.SourceTaskIdentity)
+		protorequire.ProtoEqual(t, req.Task, stored.Task)
+		now = now.Add(time.Hour)
+		duplicateResult, err := segment.Append(ctx, req)
+		duplicate := duplicateResult.MessageRef
+		require.NoError(t, err)
+		require.Equal(t, ref, duplicate)
 	}
-	require.Len(t, segment.Entries, 128)
-	req.SourceTaskIdentity.TaskID = 129
-	_, err = segment.Append(ctx, req)
-	require.ErrorAs(t, err, new(*serviceerror.InvalidArgument))
-	req.SourceTaskIdentity.TaskID = 1
-	req.SourceTaskIdentity.SourceShardID++
-	_, err = segment.Append(ctx, req)
-	require.ErrorAs(t, err, new(*serviceerror.InvalidArgument))
-	req.SourceTaskIdentity.SourceShardID--
-	duplicate, err := segment.Append(ctx, req)
-	require.NoError(t, err)
-	require.Equal(t, firstRef, duplicate)
-	require.Len(t, segment.Entries, 128)
+	require.Len(t, segment.Entries, 4)
 }
 
-func TestSegmentByteBudget(t *testing.T) {
+func TestSegmentBucketMembership(t *testing.T) {
+	t.Parallel()
+	for name, change := range map[string]func(*Segment, *EnqueueRequest){
+		"queue":           func(_ *Segment, r *EnqueueRequest) { r.Queue.TargetCluster += "-other" },
+		"source shard":    func(_ *Segment, r *EnqueueRequest) { r.SourceTaskIdentity.SourceShardID++ },
+		"producer bucket": func(_ *Segment, r *EnqueueRequest) { r.SourceTaskIdentity.NamespaceID += "-other" },
+		"invalid bucket":  func(s *Segment, _ *EnqueueRequest) { s.BucketId = segmentBucketCount },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+			ctx := newSegmentContext(&now)
+			req := testEnqueueRequest()
+			segment, err := NewSegment(ctx, req)
+			require.NoError(t, err)
+			acceptedResult, err := segment.Append(ctx, req)
+			accepted := acceptedResult.MessageRef
+			require.NoError(t, err)
+			req.SourceTaskIdentity.TaskID++
+			change(segment, &req)
+			before := proto.Clone(segment.SegmentState)
+			refResult, err := segment.Append(ctx, req)
+			ref := refResult.MessageRef
+			require.ErrorAs(t, err, new(*serviceerror.InvalidArgument))
+			require.Equal(t, MessageRef{}, ref)
+			protorequire.ProtoEqual(t, before, segment.SegmentState)
+			require.Len(t, segment.Entries, 1)
+			stored, err := segment.ReadEntry(ctx, accepted)
+			require.NoError(t, err)
+			require.NotNil(t, stored.Task)
+		})
+	}
+}
+
+func TestSegmentBucketAdmission(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
-	first := componentRequest()
+	first := testEnqueueRequest()
 	first.Task.Blob.Data = bytes.Repeat([]byte{42}, 3<<20)
 	segment, err := NewSegment(ctx, first)
 	require.NoError(t, err)
-	firstRef, err := segment.Append(ctx, first)
+	firstRefResult, err := segment.Append(ctx, first)
+	firstRef := firstRefResult.MessageRef
 	require.NoError(t, err)
 	before := proto.Clone(segment.SegmentState)
-	second := componentRequest()
-	second.SourceTaskIdentity.TaskID++
+	second := testEnqueueRequest()
+	second.SourceTaskIdentity.TaskID += 1 << 40
+	second.SourceTaskIdentity.RunID = "next-run"
 	second.Task.Blob.Data = bytes.Repeat([]byte{42}, 2<<20)
 	_, err = segment.Append(ctx, second)
 	require.ErrorAs(t, err, new(*serviceerror.ResourceExhausted))
 	protorequire.ProtoEqual(t, before, segment.SegmentState)
 	require.Len(t, segment.Entries, 1)
-	duplicate, err := segment.Append(ctx, first)
+	collision := second
+	collision.SourceTaskIdentity.NamespaceID = "namespace-0"
+	collision.SourceTaskIdentity.ArchetypeID = 0
+	collision.SourceTaskIdentity.BusinessID = "business-0"
+	require.Equal(t, SegmentBucketID(first.SourceTaskIdentity), SegmentBucketID(collision.SourceTaskIdentity))
+	_, err = segment.Append(ctx, collision)
+	require.ErrorAs(t, err, new(*serviceerror.ResourceExhausted))
+	protorequire.ProtoEqual(t, before, segment.SegmentState)
+	independent := second
+	independent.SourceTaskIdentity.NamespaceID += "-other"
+	require.NotEqual(t, SegmentBucketID(first.SourceTaskIdentity), SegmentBucketID(independent.SourceTaskIdentity))
+	otherSegment, err := NewSegment(ctx, independent)
+	require.NoError(t, err)
+	_, err = otherSegment.Append(ctx, independent)
+	require.NoError(t, err)
+	duplicateResult, err := segment.Append(ctx, first)
+	duplicate := duplicateResult.MessageRef
 	require.NoError(t, err)
 	require.Equal(t, firstRef, duplicate)
 	require.NoError(t, segment.ResolveEntry(ctx, firstRef, historydlqpb.RESOLUTION_PURGED))
-	secondRef, err := segment.Append(ctx, second)
+	secondRefResult, err := segment.Append(ctx, second)
+	secondRef := secondRefResult.MessageRef
 	require.NoError(t, err)
 	stored, err := segment.ReadEntry(ctx, secondRef)
 	require.NoError(t, err)
 	protorequire.ProtoEqual(t, second.Task, stored.Task)
+	before = proto.Clone(segment.SegmentState)
+	first.Task.Blob.Data = bytes.Repeat([]byte{42}, 4<<20)
+	_, err = segment.Append(ctx, first)
+	require.ErrorAs(t, err, new(*serviceerror.ResourceExhausted))
+	protorequire.ProtoEqual(t, before, segment.SegmentState)
 	require.LessOrEqual(t, segment.GetRetainedBytes(), int64(4<<20))
 }
 
@@ -486,7 +633,7 @@ func TestSegmentOversizedEntry(t *testing.T) {
 			t.Parallel()
 			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 			ctx := newSegmentContext(&now)
-			req := componentRequest()
+			req := testEnqueueRequest()
 			if tc.metadata {
 				req.SourceTaskIdentity.BusinessID = string(bytes.Repeat([]byte{42}, 4<<20))
 			} else {

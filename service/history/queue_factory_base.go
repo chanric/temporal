@@ -5,6 +5,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/chasm/lib/historydlq"
 	"go.temporal.io/server/common/clock"
 	"go.temporal.io/server/common/cluster"
 	"go.temporal.io/server/common/dynamicconfig"
@@ -85,7 +86,7 @@ var QueueModule = fx.Options(
 		func(tqm persistence.HistoryTaskQueueManager) queues.QueueWriter {
 			return tqm
 		},
-		queues.NewDLQWriter,
+		DLQWriterProvider,
 		fx.Annotated{
 			Group:  QueueFactoryFxGroup,
 			Target: NewTransferQueueFactory,
@@ -116,6 +117,30 @@ func ThrottleStateProvider(
 		config.TaskThrottleController,
 		timeSource,
 		metricsHandler,
+	)
+}
+
+func DLQWriterProvider(
+	queueWriter queues.QueueWriter,
+	metricsHandler metrics.Handler,
+	logger log.SnTaggedLogger,
+	namespaceRegistry namespace.Registry,
+	chasmRegistry *chasm.Registry,
+	client *historydlq.Client,
+	serializer serialization.Serializer,
+	cfg *configs.Config,
+) *queues.DLQWriter {
+	return queues.NewDLQWriter(
+		queues.NewDLQTaskEnqueuer(
+			queueWriter,
+			client,
+			serializer,
+			cfg.TaskDLQUseCHASM,
+		),
+		metricsHandler,
+		logger,
+		namespaceRegistry,
+		chasmRegistry,
 	)
 }
 
