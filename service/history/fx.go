@@ -40,6 +40,7 @@ import (
 	"go.temporal.io/server/common/worker_versioning"
 	"go.temporal.io/server/service"
 	"go.temporal.io/server/service/history/api"
+	historydlqapi "go.temporal.io/server/service/history/api/historydlq"
 	"go.temporal.io/server/service/history/api/workflowresend"
 	"go.temporal.io/server/service/history/archival"
 	"go.temporal.io/server/service/history/circuitbreakerpool"
@@ -133,6 +134,7 @@ var Module = fx.Options(
 	scheduler.Module,
 	callback.Module,
 	historydlq.Module,
+	fx.Provide(historydlqapi.NewStore),
 	namespacereplication.Module,
 	chasmnexus.Module,
 	chasmworkflow.Module,
@@ -230,6 +232,7 @@ func HandlerProvider(args NewHandlerArgs, lc fx.Lifecycle) (*Handler, error) {
 		controller:                   args.ShardController,
 		eventNotifier:                args.EventNotifier,
 		tracer:                       args.TracerProvider.Tracer(consts.LibraryName),
+		dlqStore:                     args.DLQStore,
 		taskQueueManager:             args.TaskQueueManager,
 		taskCategoryRegistry:         args.TaskCategoryRegistry,
 		dlqMetricsEmitter:            args.DLQMetricsEmitter,

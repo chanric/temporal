@@ -20,9 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	HistoryDLQService_Enqueue_FullMethodName     = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/Enqueue"
-	HistoryDLQService_ReadMessage_FullMethodName = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/ReadMessage"
-	HistoryDLQService_Resolve_FullMethodName     = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/Resolve"
+	HistoryDLQService_Enqueue_FullMethodName             = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/Enqueue"
+	HistoryDLQService_ReadMessage_FullMethodName         = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/ReadMessage"
+	HistoryDLQService_Resolve_FullMethodName             = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/Resolve"
+	HistoryDLQService_ListEntries_FullMethodName         = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/ListEntries"
+	HistoryDLQService_DescribeSegment_FullMethodName     = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/DescribeSegment"
+	HistoryDLQService_ReadSegmentMessages_FullMethodName = "/temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService/ReadSegmentMessages"
 )
 
 // HistoryDLQServiceClient is the client API for HistoryDLQService service.
@@ -32,6 +35,9 @@ type HistoryDLQServiceClient interface {
 	Enqueue(ctx context.Context, in *EnqueueRequest, opts ...grpc.CallOption) (*EnqueueResponse, error)
 	ReadMessage(ctx context.Context, in *ReadMessageRequest, opts ...grpc.CallOption) (*ReadMessageResponse, error)
 	Resolve(ctx context.Context, in *ResolveRequest, opts ...grpc.CallOption) (*ResolveResponse, error)
+	ListEntries(ctx context.Context, in *ListEntriesRequest, opts ...grpc.CallOption) (*ListEntriesResponse, error)
+	DescribeSegment(ctx context.Context, in *DescribeSegmentRequest, opts ...grpc.CallOption) (*DescribeSegmentResponse, error)
+	ReadSegmentMessages(ctx context.Context, in *ReadSegmentMessagesRequest, opts ...grpc.CallOption) (*ReadSegmentMessagesResponse, error)
 }
 
 type historyDLQServiceClient struct {
@@ -69,6 +75,33 @@ func (c *historyDLQServiceClient) Resolve(ctx context.Context, in *ResolveReques
 	return out, nil
 }
 
+func (c *historyDLQServiceClient) ListEntries(ctx context.Context, in *ListEntriesRequest, opts ...grpc.CallOption) (*ListEntriesResponse, error) {
+	out := new(ListEntriesResponse)
+	err := c.cc.Invoke(ctx, HistoryDLQService_ListEntries_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *historyDLQServiceClient) DescribeSegment(ctx context.Context, in *DescribeSegmentRequest, opts ...grpc.CallOption) (*DescribeSegmentResponse, error) {
+	out := new(DescribeSegmentResponse)
+	err := c.cc.Invoke(ctx, HistoryDLQService_DescribeSegment_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *historyDLQServiceClient) ReadSegmentMessages(ctx context.Context, in *ReadSegmentMessagesRequest, opts ...grpc.CallOption) (*ReadSegmentMessagesResponse, error) {
+	out := new(ReadSegmentMessagesResponse)
+	err := c.cc.Invoke(ctx, HistoryDLQService_ReadSegmentMessages_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HistoryDLQServiceServer is the server API for HistoryDLQService service.
 // All implementations must embed UnimplementedHistoryDLQServiceServer
 // for forward compatibility
@@ -76,6 +109,9 @@ type HistoryDLQServiceServer interface {
 	Enqueue(context.Context, *EnqueueRequest) (*EnqueueResponse, error)
 	ReadMessage(context.Context, *ReadMessageRequest) (*ReadMessageResponse, error)
 	Resolve(context.Context, *ResolveRequest) (*ResolveResponse, error)
+	ListEntries(context.Context, *ListEntriesRequest) (*ListEntriesResponse, error)
+	DescribeSegment(context.Context, *DescribeSegmentRequest) (*DescribeSegmentResponse, error)
+	ReadSegmentMessages(context.Context, *ReadSegmentMessagesRequest) (*ReadSegmentMessagesResponse, error)
 	mustEmbedUnimplementedHistoryDLQServiceServer()
 }
 
@@ -91,6 +127,15 @@ func (UnimplementedHistoryDLQServiceServer) ReadMessage(context.Context, *ReadMe
 }
 func (UnimplementedHistoryDLQServiceServer) Resolve(context.Context, *ResolveRequest) (*ResolveResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Resolve not implemented")
+}
+func (UnimplementedHistoryDLQServiceServer) ListEntries(context.Context, *ListEntriesRequest) (*ListEntriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListEntries not implemented")
+}
+func (UnimplementedHistoryDLQServiceServer) DescribeSegment(context.Context, *DescribeSegmentRequest) (*DescribeSegmentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DescribeSegment not implemented")
+}
+func (UnimplementedHistoryDLQServiceServer) ReadSegmentMessages(context.Context, *ReadSegmentMessagesRequest) (*ReadSegmentMessagesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadSegmentMessages not implemented")
 }
 func (UnimplementedHistoryDLQServiceServer) mustEmbedUnimplementedHistoryDLQServiceServer() {}
 
@@ -159,6 +204,60 @@ func _HistoryDLQService_Resolve_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HistoryDLQService_ListEntries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEntriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryDLQServiceServer).ListEntries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryDLQService_ListEntries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryDLQServiceServer).ListEntries(ctx, req.(*ListEntriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HistoryDLQService_DescribeSegment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescribeSegmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryDLQServiceServer).DescribeSegment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryDLQService_DescribeSegment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryDLQServiceServer).DescribeSegment(ctx, req.(*DescribeSegmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HistoryDLQService_ReadSegmentMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadSegmentMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryDLQServiceServer).ReadSegmentMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryDLQService_ReadSegmentMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryDLQServiceServer).ReadSegmentMessages(ctx, req.(*ReadSegmentMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HistoryDLQService_ServiceDesc is the grpc.ServiceDesc for HistoryDLQService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -177,6 +276,18 @@ var HistoryDLQService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Resolve",
 			Handler:    _HistoryDLQService_Resolve_Handler,
+		},
+		{
+			MethodName: "ListEntries",
+			Handler:    _HistoryDLQService_ListEntries_Handler,
+		},
+		{
+			MethodName: "DescribeSegment",
+			Handler:    _HistoryDLQService_DescribeSegment_Handler,
+		},
+		{
+			MethodName: "ReadSegmentMessages",
+			Handler:    _HistoryDLQService_ReadSegmentMessages_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

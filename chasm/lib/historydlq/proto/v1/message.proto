@@ -40,6 +40,8 @@ message SegmentState {
   int64 retained_bytes = 4;
   // Producer-hash bucket assigned to this segment.
   uint32 bucket_id = 5;
+  // Smallest pending message ID, or -1 when the segment is empty.
+  int64 min_message_id = 6;
 }
 
 // EntryState contains metadata for one task in a DLQ segment.
@@ -121,3 +123,67 @@ message ResolveRequest {
 }
 
 message ResolveResponse {}
+
+// SegmentRef addresses one exact segment run in a logical queue.
+message SegmentRef {
+  // Queue whose authoritative metadata must match the segment.
+  temporal.server.api.common.v1.HistoryDLQKey queue = 1;
+  // Stable segment routing identity.
+  string business_id = 2;
+  // Exact execution run; a replacement run must not be substituted.
+  string run_id = 3;
+}
+
+message ListEntriesRequest {
+  // Cluster-local system namespace used for routing.
+  string system_namespace_id = 1;
+  // Exact segment run to inspect.
+  SegmentRef segment = 2;
+  // Inclusive numeric bound; unbounded reads use the largest int64.
+  int64 inclusive_max_message_id = 3;
+  // Maximum number of references; must be positive.
+  int32 page_size = 4;
+  // Opaque continuation bound to the segment and numeric bound.
+  bytes next_page_token = 5;
+}
+
+message ListEntriesResponse {
+  // Pending entry references in numeric ID and entry-key order, without task DATA.
+  repeated MessageRef refs = 1;
+  // Opaque continuation, empty when the current live view is exhausted.
+  bytes next_page_token = 2;
+}
+
+message DescribeSegmentRequest {
+  // Cluster-local system namespace used for routing.
+  string system_namespace_id = 1;
+  // Exact segment run to inspect.
+  SegmentRef segment = 2;
+}
+
+message DescribeSegmentResponse {
+  // Number of currently retained entries, independent of visibility flags.
+  int64 pending_count = 1;
+  // Largest currently retained numeric message ID, or zero if empty.
+  int64 last_message_id = 2;
+}
+
+message ReadSegmentMessagesRequest {
+  // Cluster-local system namespace used for routing.
+  string system_namespace_id = 1;
+  // Exact segment run to inspect.
+  SegmentRef segment = 2;
+  // Inclusive numeric bound; unbounded reads use the largest int64.
+  int64 inclusive_max_message_id = 3;
+  // Maximum number of messages; must be positive.
+  int32 page_size = 4;
+  // Entry continuation bound to the segment and numeric bound.
+  bytes next_page_token = 5;
+}
+
+message ReadSegmentMessagesResponse {
+  // Entry metadata and payloads copied in one segment read operation.
+  repeated StoredMessage messages = 1;
+  // Opaque continuation, empty when the current live view is exhausted.
+  bytes next_page_token = 2;
+}

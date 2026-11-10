@@ -414,6 +414,265 @@ func (this *ResolveResponse) Equal(that interface{}) bool {
 	return proto.Equal(this, that1)
 }
 
+// Marshal an object of type SegmentRef to the protobuf v3 wire format
+func (val *SegmentRef) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type SegmentRef from the protobuf v3 wire format
+func (val *SegmentRef) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *SegmentRef) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two SegmentRef values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *SegmentRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *SegmentRef
+	switch t := that.(type) {
+	case *SegmentRef:
+		that1 = t
+	case SegmentRef:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type ListEntriesRequest to the protobuf v3 wire format
+func (val *ListEntriesRequest) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ListEntriesRequest from the protobuf v3 wire format
+func (val *ListEntriesRequest) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ListEntriesRequest) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ListEntriesRequest values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ListEntriesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ListEntriesRequest
+	switch t := that.(type) {
+	case *ListEntriesRequest:
+		that1 = t
+	case ListEntriesRequest:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type ListEntriesResponse to the protobuf v3 wire format
+func (val *ListEntriesResponse) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ListEntriesResponse from the protobuf v3 wire format
+func (val *ListEntriesResponse) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ListEntriesResponse) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ListEntriesResponse values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ListEntriesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ListEntriesResponse
+	switch t := that.(type) {
+	case *ListEntriesResponse:
+		that1 = t
+	case ListEntriesResponse:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type DescribeSegmentRequest to the protobuf v3 wire format
+func (val *DescribeSegmentRequest) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type DescribeSegmentRequest from the protobuf v3 wire format
+func (val *DescribeSegmentRequest) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *DescribeSegmentRequest) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two DescribeSegmentRequest values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *DescribeSegmentRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *DescribeSegmentRequest
+	switch t := that.(type) {
+	case *DescribeSegmentRequest:
+		that1 = t
+	case DescribeSegmentRequest:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type DescribeSegmentResponse to the protobuf v3 wire format
+func (val *DescribeSegmentResponse) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type DescribeSegmentResponse from the protobuf v3 wire format
+func (val *DescribeSegmentResponse) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *DescribeSegmentResponse) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two DescribeSegmentResponse values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *DescribeSegmentResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *DescribeSegmentResponse
+	switch t := that.(type) {
+	case *DescribeSegmentResponse:
+		that1 = t
+	case DescribeSegmentResponse:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type ReadSegmentMessagesRequest to the protobuf v3 wire format
+func (val *ReadSegmentMessagesRequest) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ReadSegmentMessagesRequest from the protobuf v3 wire format
+func (val *ReadSegmentMessagesRequest) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ReadSegmentMessagesRequest) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ReadSegmentMessagesRequest values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ReadSegmentMessagesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ReadSegmentMessagesRequest
+	switch t := that.(type) {
+	case *ReadSegmentMessagesRequest:
+		that1 = t
+	case ReadSegmentMessagesRequest:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type ReadSegmentMessagesResponse to the protobuf v3 wire format
+func (val *ReadSegmentMessagesResponse) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ReadSegmentMessagesResponse from the protobuf v3 wire format
+func (val *ReadSegmentMessagesResponse) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ReadSegmentMessagesResponse) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ReadSegmentMessagesResponse values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ReadSegmentMessagesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ReadSegmentMessagesResponse
+	switch t := that.(type) {
+	case *ReadSegmentMessagesResponse:
+		that1 = t
+	case ReadSegmentMessagesResponse:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
 var (
 	Resolution_shorthandValue = map[string]int32{
 		"Unspecified": 0,

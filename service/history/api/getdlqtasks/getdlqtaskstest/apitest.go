@@ -8,9 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/persistence"
 	"go.temporal.io/server/common/persistence/serialization"
 	"go.temporal.io/server/service/history/api/getdlqtasks"
+	"go.temporal.io/server/service/history/api/historydlq"
+	"go.temporal.io/server/service/history/configs"
 	"go.temporal.io/server/service/history/tasks"
 )
 
@@ -43,8 +46,7 @@ func TestInvoke(t *testing.T, manager persistence.HistoryTaskQueueManager) {
 	require.NoError(t, err)
 	res, err := getdlqtasks.Invoke(
 		context.Background(),
-		manager,
-		tasks.NewDefaultTaskCategoryRegistry(),
+		historydlq.NewStore(manager, tasks.NewDefaultTaskCategoryRegistry(), nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.GetDLQTasksRequest{
 			DlqKey: &commonspb.HistoryDLQKey{
 				TaskCategory:  int32(tasks.CategoryTransfer.ID()),

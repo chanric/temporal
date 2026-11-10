@@ -2092,9 +2092,10 @@ func (adh *AdminHandler) GetDLQTasks(
 	request *adminservice.GetDLQTasksRequest,
 ) (*adminservice.GetDLQTasksResponse, error) {
 	response, err := adh.historyClient.GetDLQTasks(ctx, &historyservice.GetDLQTasksRequest{
-		DlqKey:        request.DlqKey,
-		PageSize:      request.PageSize,
-		NextPageToken: request.NextPageToken,
+		DlqKey:                   request.DlqKey,
+		InclusiveMaxTaskMetadata: request.InclusiveMaxTaskMetadata,
+		PageSize:                 request.PageSize,
+		NextPageToken:            request.NextPageToken,
 	})
 	if err != nil {
 		return nil, err

@@ -131,6 +131,7 @@ type Config struct {
 
 	TaskDLQEnabled                 dynamicconfig.BoolPropertyFn
 	TaskDLQUseCHASM                dynamicconfig.BoolPropertyFn
+	TaskDLQReadCHASM               dynamicconfig.BoolPropertyFn
 	TaskDLQUnexpectedErrorAttempts dynamicconfig.IntPropertyFn
 	TaskDLQInternalErrors          dynamicconfig.BoolPropertyFn
 	TaskDLQErrorPattern            dynamicconfig.StringPropertyFn
@@ -612,6 +613,7 @@ func NewConfig(
 
 		TaskDLQEnabled:                 dynamicconfig.HistoryTaskDLQEnabled.Get(dc),
 		TaskDLQUseCHASM:                dynamicconfig.HistoryTaskDLQUseCHASM.Get(dc),
+		TaskDLQReadCHASM:               dynamicconfig.HistoryTaskDLQReadCHASM.Get(dc),
 		TaskDLQUnexpectedErrorAttempts: dynamicconfig.HistoryTaskDLQUnexpectedErrorAttempts.Get(dc),
 		TaskDLQInternalErrors:          dynamicconfig.HistoryTaskDLQInternalErrors.Get(dc),
 		TaskDLQErrorPattern:            dynamicconfig.HistoryTaskDLQErrorPattern.Get(dc),

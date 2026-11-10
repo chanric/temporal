@@ -55,6 +55,7 @@ func NewSegment(ctx chasm.MutableContext, req EnqueueRequest) (*Segment, error) 
 		Queue:         queueKeyToProto(req.Queue),
 		SourceShardId: req.SourceTaskIdentity.SourceShardID,
 		BucketId:      SegmentBucketID(req.SourceTaskIdentity),
+		MinMessageId:  -1,
 	}
 	state.RetainedBytes = int64(proto.Size(state)) + segmentNodeReserve
 	if state.RetainedBytes > segmentRetainedBytesLimit {
@@ -99,6 +100,9 @@ func (s *Segment) Append(ctx chasm.MutableContext, req EnqueueRequest) (appendRe
 		return appendResult{}, segmentBudgetExceededErr
 	}
 	s.Entries[entryKey] = chasm.NewComponentField(ctx, entry)
+	if s.GetMinMessageId() < 0 || entry.GetMessageId() < s.GetMinMessageId() {
+		s.MinMessageId = entry.GetMessageId()
+	}
 	previousRetainedBytes := s.GetRetainedBytes()
 	s.RetainedBytes += entryBytes
 	return appendResult{
@@ -133,8 +137,26 @@ func (s *Segment) ResolveEntry(ctx chasm.MutableContext, ref MessageRef, reason 
 	if err != nil {
 		return err
 	}
+	// TODO, add batch
+	minimum := s.GetMinMessageId()
+	if entry.GetMessageId() == minimum {
+		minimum = -1
+		for key, field := range s.Entries {
+			if key == ref.EntryKey {
+				continue
+			}
+			metadata, err := s.entryMetadata(ctx, key, field)
+			if err != nil {
+				return err
+			}
+			if minimum < 0 || metadata.MessageID < minimum {
+				minimum = metadata.MessageID
+			}
+		}
+	}
 	s.RetainedBytes -= int64(proto.Size(entry.EntryState)+len(ref.EntryKey)) + entry.GetPayloadSizeBytes() + segmentNodeReserve
 	delete(s.Entries, ref.EntryKey)
+	s.MinMessageId = minimum
 	return nil
 }
 
@@ -155,7 +177,7 @@ func (s *Segment) SearchAttributes(chasm.Context) []chasm.SearchAttributeKeyValu
 		categorySearchAttribute.Value(int64(queue.GetTaskCategory())),
 		sourceSearchAttribute.Value(queue.GetSourceCluster()),
 		targetSearchAttribute.Value(queue.GetTargetCluster()),
-		pendingSearchAttribute.Value(len(s.Entries) != 0),
+		minMessageIDSearchAttribute.Value(s.GetMinMessageId()),
 	}
 }
 

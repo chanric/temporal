@@ -506,6 +506,8 @@ message GetDLQTasksRequest {
   // page_size must be positive. Up to this many tasks will be returned.
   int32 page_size = 2;
   bytes next_page_token = 3;
+  // Inclusive message ID bound. Omitted means unbounded; zero is a valid bound.
+  temporal.server.api.common.v1.HistoryDLQTaskMetadata inclusive_max_task_metadata = 4;
 }
 
 message GetDLQTasksResponse {

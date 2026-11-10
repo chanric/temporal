@@ -25,5 +25,20 @@ service HistoryDLQService {
     option (temporal.server.api.routing.v1.routing).business_id = "ref.business_id";
     option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
   }
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "segment.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+  rpc DescribeSegment(DescribeSegmentRequest) returns (DescribeSegmentResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "segment.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+  rpc ReadSegmentMessages(ReadSegmentMessagesRequest) returns (ReadSegmentMessagesResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "segment.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
 }
 

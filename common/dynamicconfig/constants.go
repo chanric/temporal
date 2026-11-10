@@ -3132,6 +3132,12 @@ a low priority workflow lock before subsequent stream sender conversion attempts
 		`HistoryTaskDLQUseCHASM selects CHASM for new history DLQ writes through the shared writer.
 History replication also requires history.enableHistoryReplicationDLQV2.`,
 	)
+	HistoryTaskDLQReadCHASM = NewGlobalBoolSetting(
+		"history.TaskDLQReadCHASM",
+		false,
+		`HistoryTaskDLQReadCHASM includes CHASM segments in history DLQ reads independently of writer selection.
+Preemptable DLQ activities continue to read QueueV2 because they use prefix deletion.`,
+	)
 	HistoryTaskDLQUnexpectedErrorAttempts = NewGlobalIntSetting(
 		"history.TaskDLQUnexpectedErrorAttempts",
 		70, // 70 attempts takes about an hour

@@ -26,10 +26,13 @@ import (
 )
 
 type testRPCClient struct {
+	readSegment func(context.Context, *historydlqpb.ReadSegmentMessagesRequest) (*historydlqpb.ReadSegmentMessagesResponse, error)
 	historydlqpb.HistoryDLQServiceClient
-	enqueue func(context.Context, *historydlqpb.EnqueueRequest) (*historydlqpb.EnqueueResponse, error)
-	read    func(context.Context, *historydlqpb.ReadMessageRequest) (*historydlqpb.ReadMessageResponse, error)
-	resolve func(context.Context, *historydlqpb.ResolveRequest) (*historydlqpb.ResolveResponse, error)
+	enqueue  func(context.Context, *historydlqpb.EnqueueRequest) (*historydlqpb.EnqueueResponse, error)
+	read     func(context.Context, *historydlqpb.ReadMessageRequest) (*historydlqpb.ReadMessageResponse, error)
+	resolve  func(context.Context, *historydlqpb.ResolveRequest) (*historydlqpb.ResolveResponse, error)
+	list     func(context.Context, *historydlqpb.ListEntriesRequest) (*historydlqpb.ListEntriesResponse, error)
+	describe func(context.Context, *historydlqpb.DescribeSegmentRequest) (*historydlqpb.DescribeSegmentResponse, error)
 }
 
 func (c testRPCClient) Enqueue(
@@ -233,6 +236,11 @@ func TestRPCRoutingDescriptors(t *testing.T) {
 			Ref:               ref,
 		},
 	}
+	requests = append(requests,
+		&historydlqpb.ListEntriesRequest{SystemNamespaceId: primitives.SystemNamespaceID, Segment: &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue}},
+		&historydlqpb.DescribeSegmentRequest{SystemNamespaceId: primitives.SystemNamespaceID, Segment: &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue}},
+	)
+	requests = append(requests, &historydlqpb.ReadSegmentMessagesRequest{SystemNamespaceId: primitives.SystemNamespaceID, Segment: &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue}})
 	methods := historydlqpb.File_temporal_server_chasm_lib_historydlq_proto_v1_service_proto.Services().Get(0).Methods()
 	get := func(msg protoreflect.Message, path string) string {
 		parts := strings.Split(path, ".")
@@ -380,4 +388,15 @@ func TestClientProducerBuckets(t *testing.T) {
 		protorequire.ProtoEqual(t, req.Task, stored.Task)
 	}
 	require.Len(t, segments, 4)
+}
+
+func (c testRPCClient) ListEntries(ctx context.Context, req *historydlqpb.ListEntriesRequest, _ ...grpc.CallOption) (*historydlqpb.ListEntriesResponse, error) {
+	return c.list(ctx, req)
+}
+func (c testRPCClient) DescribeSegment(ctx context.Context, req *historydlqpb.DescribeSegmentRequest, _ ...grpc.CallOption) (*historydlqpb.DescribeSegmentResponse, error) {
+	return c.describe(ctx, req)
+}
+
+func (c testRPCClient) ReadSegmentMessages(ctx context.Context, req *historydlqpb.ReadSegmentMessagesRequest, _ ...grpc.CallOption) (*historydlqpb.ReadSegmentMessagesResponse, error) {
+	return c.readSegment(ctx, req)
 }

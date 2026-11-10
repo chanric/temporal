@@ -194,3 +194,132 @@ func (c *HistoryDLQServiceLayeredClient) Resolve(
 	}
 	return backoff.ThrottleRetryContextWithReturn(ctx, call, c.retryPolicy, common.IsServiceClientTransientError)
 }
+func (c *HistoryDLQServiceLayeredClient) callListEntriesNoRetry(
+	ctx context.Context,
+	request *ListEntriesRequest,
+	opts ...grpc.CallOption,
+) (*ListEntriesResponse, error) {
+	var response *ListEntriesResponse
+	var err error
+	startTime := time.Now().UTC()
+	// the caller is a namespace, hence the tag below.
+	caller := headers.GetCallerInfo(ctx).CallerName
+	metricsHandler := c.metricsHandler.WithTags(
+		metrics.OperationTag("HistoryDLQService.ListEntries"),
+		metrics.NamespaceTag(caller),
+		metrics.ServiceRoleTag(metrics.HistoryRoleTagValue),
+	)
+	metrics.ClientRequests.With(metricsHandler).Record(1)
+	defer func() {
+		if err != nil {
+			metrics.ClientFailures.With(metricsHandler).Record(1, metrics.ServiceErrorTypeTag(err))
+		}
+		metrics.ClientLatency.With(metricsHandler).Record(time.Since(startTime))
+	}()
+	shardID := common.WorkflowIDToHistoryShard(request.GetSystemNamespaceId(), request.GetSegment().GetBusinessId(), c.numShards)
+	op := func(ctx context.Context, client HistoryDLQServiceClient) error {
+		var err error
+		ctx, cancel := context.WithTimeout(ctx, history.DefaultTimeout)
+		defer cancel()
+		response, err = client.ListEntries(ctx, request, opts...)
+		return err
+	}
+	err = c.redirector.Execute(ctx, shardID, op)
+	return response, err
+}
+func (c *HistoryDLQServiceLayeredClient) ListEntries(
+	ctx context.Context,
+	request *ListEntriesRequest,
+	opts ...grpc.CallOption,
+) (*ListEntriesResponse, error) {
+	call := func(ctx context.Context) (*ListEntriesResponse, error) {
+		return c.callListEntriesNoRetry(ctx, request, opts...)
+	}
+	return backoff.ThrottleRetryContextWithReturn(ctx, call, c.retryPolicy, common.IsServiceClientTransientError)
+}
+func (c *HistoryDLQServiceLayeredClient) callDescribeSegmentNoRetry(
+	ctx context.Context,
+	request *DescribeSegmentRequest,
+	opts ...grpc.CallOption,
+) (*DescribeSegmentResponse, error) {
+	var response *DescribeSegmentResponse
+	var err error
+	startTime := time.Now().UTC()
+	// the caller is a namespace, hence the tag below.
+	caller := headers.GetCallerInfo(ctx).CallerName
+	metricsHandler := c.metricsHandler.WithTags(
+		metrics.OperationTag("HistoryDLQService.DescribeSegment"),
+		metrics.NamespaceTag(caller),
+		metrics.ServiceRoleTag(metrics.HistoryRoleTagValue),
+	)
+	metrics.ClientRequests.With(metricsHandler).Record(1)
+	defer func() {
+		if err != nil {
+			metrics.ClientFailures.With(metricsHandler).Record(1, metrics.ServiceErrorTypeTag(err))
+		}
+		metrics.ClientLatency.With(metricsHandler).Record(time.Since(startTime))
+	}()
+	shardID := common.WorkflowIDToHistoryShard(request.GetSystemNamespaceId(), request.GetSegment().GetBusinessId(), c.numShards)
+	op := func(ctx context.Context, client HistoryDLQServiceClient) error {
+		var err error
+		ctx, cancel := context.WithTimeout(ctx, history.DefaultTimeout)
+		defer cancel()
+		response, err = client.DescribeSegment(ctx, request, opts...)
+		return err
+	}
+	err = c.redirector.Execute(ctx, shardID, op)
+	return response, err
+}
+func (c *HistoryDLQServiceLayeredClient) DescribeSegment(
+	ctx context.Context,
+	request *DescribeSegmentRequest,
+	opts ...grpc.CallOption,
+) (*DescribeSegmentResponse, error) {
+	call := func(ctx context.Context) (*DescribeSegmentResponse, error) {
+		return c.callDescribeSegmentNoRetry(ctx, request, opts...)
+	}
+	return backoff.ThrottleRetryContextWithReturn(ctx, call, c.retryPolicy, common.IsServiceClientTransientError)
+}
+func (c *HistoryDLQServiceLayeredClient) callReadSegmentMessagesNoRetry(
+	ctx context.Context,
+	request *ReadSegmentMessagesRequest,
+	opts ...grpc.CallOption,
+) (*ReadSegmentMessagesResponse, error) {
+	var response *ReadSegmentMessagesResponse
+	var err error
+	startTime := time.Now().UTC()
+	// the caller is a namespace, hence the tag below.
+	caller := headers.GetCallerInfo(ctx).CallerName
+	metricsHandler := c.metricsHandler.WithTags(
+		metrics.OperationTag("HistoryDLQService.ReadSegmentMessages"),
+		metrics.NamespaceTag(caller),
+		metrics.ServiceRoleTag(metrics.HistoryRoleTagValue),
+	)
+	metrics.ClientRequests.With(metricsHandler).Record(1)
+	defer func() {
+		if err != nil {
+			metrics.ClientFailures.With(metricsHandler).Record(1, metrics.ServiceErrorTypeTag(err))
+		}
+		metrics.ClientLatency.With(metricsHandler).Record(time.Since(startTime))
+	}()
+	shardID := common.WorkflowIDToHistoryShard(request.GetSystemNamespaceId(), request.GetSegment().GetBusinessId(), c.numShards)
+	op := func(ctx context.Context, client HistoryDLQServiceClient) error {
+		var err error
+		ctx, cancel := context.WithTimeout(ctx, history.DefaultTimeout)
+		defer cancel()
+		response, err = client.ReadSegmentMessages(ctx, request, opts...)
+		return err
+	}
+	err = c.redirector.Execute(ctx, shardID, op)
+	return response, err
+}
+func (c *HistoryDLQServiceLayeredClient) ReadSegmentMessages(
+	ctx context.Context,
+	request *ReadSegmentMessagesRequest,
+	opts ...grpc.CallOption,
+) (*ReadSegmentMessagesResponse, error) {
+	call := func(ctx context.Context) (*ReadSegmentMessagesResponse, error) {
+		return c.callReadSegmentMessagesNoRetry(ctx, request, opts...)
+	}
+	return backoff.ThrottleRetryContextWithReturn(ctx, call, c.retryPolicy, common.IsServiceClientTransientError)
+}

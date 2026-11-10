@@ -57,6 +57,7 @@ type (
 
 		// GetDLQTasks (for V2)
 		getDLQTasksResponses    []*adminservice.GetDLQTasksResponse
+		getDLQTasksRequests     []*adminservice.GetDLQTasksRequest
 		nextGetDLQTasksResponse int
 	}
 )
@@ -109,6 +110,19 @@ func (tc *dlqTestCase) Run(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+	if p.command == "read" && p.dlqVersion != "v1" {
+		bound := int64(persistence.MaxQueueMessageID)
+		if p.lastMessageID != "" {
+			parsed, parseErr := strconv.ParseInt(p.lastMessageID, 10, 64)
+			if parseErr == nil {
+				bound = parsed
+			}
+		}
+		for _, request := range p.adminClient.getDLQTasksRequests {
+			require.NotNil(t, request.InclusiveMaxTaskMetadata)
+			require.Equal(t, bound, request.InclusiveMaxTaskMetadata.MessageId)
+		}
+	}
 	if tc.validateStdout != nil {
 		tc.validateStdout(t, &stdout)
 	}
@@ -438,10 +452,11 @@ func (f *fakeAdminClient) DescribeCluster(
 }
 
 func (f *fakeAdminClient) GetDLQTasks(
-	context.Context,
-	*adminservice.GetDLQTasksRequest,
-	...grpc.CallOption,
+	_ context.Context,
+	request *adminservice.GetDLQTasksRequest,
+	_ ...grpc.CallOption,
 ) (*adminservice.GetDLQTasksResponse, error) {
+	f.getDLQTasksRequests = append(f.getDLQTasksRequests, request)
 	if f.err != nil {
 		return nil, f.err
 	}

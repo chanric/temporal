@@ -167,3 +167,74 @@ func messageRefToSegmentComponentRef(messageRef MessageRef) chasm.ComponentRef {
 		RunID:       messageRef.RunID,
 	})
 }
+
+func (h *serviceHandler) ListEntries(ctx context.Context, req *historydlqpb.ListEntriesRequest) (*historydlqpb.ListEntriesResponse, error) {
+	ref, err := segmentProtoToRef(req.GetSegment())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.validateLocalRouting(req.GetSystemNamespaceId(), ref.Queue); err != nil {
+		return nil, err
+	}
+	request := ListEntriesRequest{Segment: ref, InclusiveMaxMessageID: req.GetInclusiveMaxMessageId(), PageSize: int(req.GetPageSize()), NextPageToken: req.GetNextPageToken()}
+	if err := validateListEntriesRequest(request); err != nil {
+		return nil, err
+	}
+	page, err := chasm.ReadComponent[*Segment](ctx, segmentRefToComponentRef(ref), func(s *Segment, ctx chasm.Context, req ListEntriesRequest) (EntryPage, error) {
+		return s.ListEntries(ctx, req)
+	}, request)
+	if err != nil {
+		return nil, err
+	}
+	response := &historydlqpb.ListEntriesResponse{NextPageToken: page.NextPageToken}
+	for _, messageRef := range page.Refs {
+		response.Refs = append(response.Refs, messageRefToProto(messageRef))
+	}
+	return response, nil
+}
+
+func (h *serviceHandler) DescribeSegment(ctx context.Context, req *historydlqpb.DescribeSegmentRequest) (*historydlqpb.DescribeSegmentResponse, error) {
+	ref, err := segmentProtoToRef(req.GetSegment())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.validateLocalRouting(req.GetSystemNamespaceId(), ref.Queue); err != nil {
+		return nil, err
+	}
+	stats, err := chasm.ReadComponent[*Segment](ctx, segmentRefToComponentRef(ref), func(s *Segment, ctx chasm.Context, ref SegmentRef) (SegmentStats, error) {
+		return s.DescribeSegment(ctx, ref)
+	}, ref)
+	if err != nil {
+		return nil, err
+	}
+	return &historydlqpb.DescribeSegmentResponse{PendingCount: stats.PendingCount, LastMessageId: stats.LastMessageID}, nil
+}
+
+func segmentRefToComponentRef(ref SegmentRef) chasm.ComponentRef {
+	return chasm.NewComponentRef[*Segment](chasm.ExecutionKey{NamespaceID: primitives.SystemNamespaceID, BusinessID: ref.BusinessID, RunID: ref.RunID})
+}
+
+func (h *serviceHandler) ReadSegmentMessages(ctx context.Context, req *historydlqpb.ReadSegmentMessagesRequest) (*historydlqpb.ReadSegmentMessagesResponse, error) {
+	ref, err := segmentProtoToRef(req.GetSegment())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.validateLocalRouting(req.GetSystemNamespaceId(), ref.Queue); err != nil {
+		return nil, err
+	}
+	request := ReadSegmentMessagesRequest{Segment: ref, InclusiveMaxMessageID: req.GetInclusiveMaxMessageId(), PageSize: int(req.GetPageSize()), NextPageToken: req.GetNextPageToken()}
+	if err := validateListEntriesRequest(ListEntriesRequest(request)); err != nil {
+		return nil, err
+	}
+	page, err := chasm.ReadComponent[*Segment](ctx, segmentRefToComponentRef(ref), func(s *Segment, ctx chasm.Context, req ReadSegmentMessagesRequest) (MessagePage, error) {
+		return s.ReadSegmentMessages(ctx, req)
+	}, request)
+	if err != nil {
+		return nil, err
+	}
+	response := &historydlqpb.ReadSegmentMessagesResponse{NextPageToken: page.NextPageToken}
+	for _, message := range page.Messages {
+		response.Messages = append(response.Messages, storedMessageToProto(message))
+	}
+	return response, nil
+}

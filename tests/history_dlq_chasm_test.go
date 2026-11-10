@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/serviceerror"
+	"go.temporal.io/server/api/adminservice/v1"
 	commonspb "go.temporal.io/server/api/common/v1"
+	"go.temporal.io/server/api/historyservice/v1"
 	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/chasm/lib/historydlq"
 	historydlqpb "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb/v1"
@@ -18,8 +21,10 @@ import (
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/definition"
 	"go.temporal.io/server/common/dynamicconfig"
+	"go.temporal.io/server/common/headers"
 	"go.temporal.io/server/common/metrics"
 	"go.temporal.io/server/common/metrics/metricstest"
+	"go.temporal.io/server/common/persistence"
 	"go.temporal.io/server/common/persistence/serialization"
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/common/testing/await"
@@ -130,6 +135,60 @@ func newHistoryDLQTestEnvironment(t *testing.T, opts ...testcore.TestOption) *te
 
 func TestHistoryDLQCHASMSuite(t *testing.T) {
 	t.Parallel()
+	t.Run("WriterRollbackKeepsReads", func(t *testing.T) {
+		t.Parallel()
+		env := newHistoryDLQTestEnvironment(t, testcore.WithDynamicConfig(dynamicconfig.HistoryTaskDLQReadCHASM, true))
+		rpc := env.GetTestCluster().Host().HistoryDLQClient()
+		client := historydlq.NewClient(env.Logger, rpc)
+		req := newHistoryDLQEnqueueRequest(t, env, 123, 1024)
+		accepted, err := rpc.Enqueue(t.Context(), req)
+		require.NoError(t, err)
+		env.CloseShard(primitives.SystemNamespaceID, req.BusinessId)
+		segment := historydlq.SegmentRef{Queue: historydlq.QueueKey{CategoryID: req.Queue.TaskCategory, SourceCluster: req.Queue.SourceCluster, TargetCluster: req.Queue.TargetCluster}, BusinessID: accepted.Ref.BusinessId, RunID: accepted.Ref.RunId}
+		page, err := client.ListEntries(t.Context(), historydlq.ListEntriesRequest{Segment: segment, InclusiveMaxMessageID: math.MaxInt64, PageSize: 1})
+		require.NoError(t, err)
+		require.Len(t, page.Refs, 1)
+		require.Equal(t, accepted.Ref.EntryKey, page.Refs[0].EntryKey)
+		stats, err := client.DescribeSegment(t.Context(), segment)
+		require.NoError(t, err)
+		require.Equal(t, historydlq.SegmentStats{PendingCount: 1, LastMessageID: accepted.Ref.MessageId}, stats)
+
+		manager, err := env.GetTestCluster().TestBase().Factory.NewHistoryTaskQueueManager()
+		require.NoError(t, err)
+		t.Cleanup(manager.Close)
+		_, err = manager.CreateQueue(t.Context(), &persistence.CreateQueueRequest{QueueKey: persistence.QueueKey{QueueType: persistence.QueueTypeHistoryDLQ, Category: tasks.CategoryReplication, SourceCluster: req.Queue.SourceCluster, TargetCluster: req.Queue.TargetCluster}})
+		require.NoError(t, err)
+		task, err := serialization.NewSerializer().DeserializeTask(tasks.CategoryReplication, req.Task.Blob)
+		require.NoError(t, err)
+		_, err = manager.EnqueueTask(t.Context(), &persistence.EnqueueTaskRequest{QueueType: persistence.QueueTypeHistoryDLQ, SourceCluster: req.Queue.SourceCluster, TargetCluster: req.Queue.TargetCluster, SourceShardID: 9, Task: task})
+		require.NoError(t, err)
+		env.OverrideDynamicConfig(dynamicconfig.HistoryTaskDLQUseCHASM, false)
+		legacyTask := &commonspb.HistoryDLQTask{Metadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 0}, Payload: &commonspb.HistoryTask{ShardId: 9, Blob: req.Task.Blob}}
+		chasmTask := &commonspb.HistoryDLQTask{Metadata: &commonspb.HistoryDLQTaskMetadata{MessageId: accepted.Ref.MessageId}, Payload: req.Task}
+		await.Require(t.Context(), t, func(t *await.T) {
+			response, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 10})
+			require.NoError(t, err)
+			protorequire.ProtoEqual(t, &adminservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{legacyTask, chasmTask}}, response)
+		}, 10*time.Second, 100*time.Millisecond)
+		bounded, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 10, InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 0}})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, &adminservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{legacyTask}}, bounded)
+		fullBounded, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 10, InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: accepted.Ref.MessageId}})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, &adminservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{legacyTask, chasmTask}}, fullBounded)
+		first, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 1})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, legacyTask, first.DlqTasks[0])
+		require.NotEmpty(t, first.NextPageToken)
+		second, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 2, NextPageToken: first.NextPageToken})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, &adminservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{chasmTask}}, second)
+		legacy, err := env.GetTestCluster().HistoryClient().GetDLQTasks(headers.SetCallerType(t.Context(), headers.CallerTypePreemptable), &historyservice.GetDLQTasksRequest{DlqKey: req.Queue, PageSize: 10})
+		require.NoError(t, err)
+		raw, err := manager.ReadRawTasks(t.Context(), &persistence.ReadRawTasksRequest{QueueKey: persistence.QueueKey{QueueType: persistence.QueueTypeHistoryDLQ, Category: tasks.CategoryReplication, SourceCluster: req.Queue.SourceCluster, TargetCluster: req.Queue.TargetCluster}, PageSize: 10})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, &historyservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{legacyTask}, NextPageToken: raw.NextPageToken}, legacy)
+	})
 	t.Run("ProducerBuckets", func(t *testing.T) {
 		t.Parallel()
 		env := newHistoryDLQTestEnvironment(t)

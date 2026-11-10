@@ -10,8 +10,11 @@ import (
 	"go.temporal.io/api/serviceerror"
 	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/persistence"
 	"go.temporal.io/server/service/history/api/getdlqtasks"
+	"go.temporal.io/server/service/history/api/historydlq"
+	"go.temporal.io/server/service/history/configs"
 	"go.temporal.io/server/service/history/consts"
 	"go.temporal.io/server/service/history/tasks"
 )
@@ -25,8 +28,7 @@ func TestInvoke_InvalidTaskCategory(t *testing.T) {
 	t.Parallel()
 
 	_, err := getdlqtasks.Invoke(context.Background(),
-		nil,
-		tasks.NewDefaultTaskCategoryRegistry(),
+		historydlq.NewStore(nil, tasks.NewDefaultTaskCategoryRegistry(), nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.GetDLQTasksRequest{
 			DlqKey: &commonspb.HistoryDLQKey{
 				TaskCategory: -1,
@@ -45,8 +47,7 @@ func TestInvoke_ZeroPageSize(t *testing.T) {
 
 	_, err := getdlqtasks.Invoke(
 		context.Background(),
-		new(persistence.HistoryTaskQueueManagerImpl),
-		tasks.NewDefaultTaskCategoryRegistry(),
+		historydlq.NewStore(new(persistence.HistoryTaskQueueManagerImpl), tasks.NewDefaultTaskCategoryRegistry(), nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.GetDLQTasksRequest{
 			DlqKey: &commonspb.HistoryDLQKey{
 				TaskCategory: int32(tasks.CategoryTransfer.ID()),
@@ -63,8 +64,7 @@ func TestInvoke_UnavailableError(t *testing.T) {
 
 	_, err := getdlqtasks.Invoke(
 		context.Background(),
-		failingHistoryTaskQueueManager{},
-		tasks.NewDefaultTaskCategoryRegistry(),
+		historydlq.NewStore(failingHistoryTaskQueueManager{}, tasks.NewDefaultTaskCategoryRegistry(), nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.GetDLQTasksRequest{
 			DlqKey: &commonspb.HistoryDLQKey{
 				TaskCategory: int32(tasks.CategoryTransfer.ID()),

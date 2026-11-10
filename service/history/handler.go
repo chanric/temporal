@@ -58,6 +58,7 @@ import (
 	"go.temporal.io/server/service/history/api/deleteexecution"
 	"go.temporal.io/server/service/history/api/forcedeleteworkflowexecution"
 	"go.temporal.io/server/service/history/api/getdlqtasks"
+	historydlqapi "go.temporal.io/server/service/history/api/historydlq"
 	"go.temporal.io/server/service/history/api/listqueues"
 	"go.temporal.io/server/service/history/configs"
 	"go.temporal.io/server/service/history/consts"
@@ -100,6 +101,7 @@ type (
 		hostInfoProvider             membership.HostInfoProvider
 		controller                   shard.Controller
 		tracer                       trace.Tracer
+		dlqStore                     *historydlqapi.Store
 		taskQueueManager             persistence.HistoryTaskQueueManager
 		taskCategoryRegistry         tasks.TaskCategoryRegistry
 		dlqMetricsEmitter            *persistence.DLQMetricsEmitter
@@ -139,6 +141,7 @@ type (
 		ShardController              shard.Controller
 		EventNotifier                events.Notifier
 		TracerProvider               trace.TracerProvider
+		DLQStore                     *historydlqapi.Store
 		TaskQueueManager             persistence.HistoryTaskQueueManager
 		TaskCategoryRegistry         tasks.TaskCategoryRegistry
 		DLQMetricsEmitter            *persistence.DLQMetricsEmitter
@@ -2081,7 +2084,7 @@ func (h *Handler) GetDLQTasks(
 	ctx context.Context,
 	request *historyservice.GetDLQTasksRequest,
 ) (*historyservice.GetDLQTasksResponse, error) {
-	return getdlqtasks.Invoke(ctx, h.taskQueueManager, h.taskCategoryRegistry, request)
+	return getdlqtasks.Invoke(ctx, h.dlqStore, request)
 }
 
 func (h *Handler) DeleteDLQTasks(

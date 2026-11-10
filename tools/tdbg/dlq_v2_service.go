@@ -23,7 +23,7 @@ import (
 )
 
 type (
-	// DLQV2Service implements DLQService for [persistence.QueueV2].
+	// DLQV2Service implements the v2 DLQ operator commands.
 	DLQV2Service struct {
 		category        tasks.Category
 		sourceCluster   string
@@ -164,8 +164,9 @@ func (ac *DLQV2Service) ReadMessages(c *cli.Context) (err error) {
 					SourceCluster: ac.sourceCluster,
 					TargetCluster: ac.targetCluster,
 				},
-				PageSize:      int32(pageSize),
-				NextPageToken: paginationToken,
+				PageSize:                 int32(pageSize),
+				InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: maxMessageID},
+				NextPageToken:            paginationToken,
 			}
 			res, err := adminClient.GetDLQTasks(ctx, request)
 			if err != nil {

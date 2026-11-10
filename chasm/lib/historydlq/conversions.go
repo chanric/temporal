@@ -80,3 +80,16 @@ func taskIdentityProtoToIdentity(identity *historydlqpb.TaskIdentity) TaskIdenti
 		ArchetypeID:   identity.GetArchetypeId(),
 	}
 }
+
+func segmentRefToProto(ref SegmentRef) *historydlqpb.SegmentRef {
+	return &historydlqpb.SegmentRef{Queue: queueKeyToProto(ref.Queue), BusinessId: ref.BusinessID, RunId: ref.RunID}
+}
+
+func segmentProtoToRef(ref *historydlqpb.SegmentRef) (SegmentRef, error) {
+	result := SegmentRef{Queue: queueProtoToKey(ref.GetQueue()), BusinessID: ref.GetBusinessId(), RunID: ref.GetRunId()}
+	return result, validateSegmentRef(result)
+}
+
+func storedMessageToProto(message StoredMessage) *historydlqpb.StoredMessage {
+	return &historydlqpb.StoredMessage{Ref: messageRefToProto(message.Ref), SourceTaskIdentity: taskIdentityToProto(message.SourceTaskIdentity), Task: message.Task}
+}

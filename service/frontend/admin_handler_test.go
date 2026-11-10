@@ -1445,8 +1445,9 @@ func (s *adminHandlerSuite) TestGetDLQTasks() {
 					SourceCluster: "test-source-cluster",
 					TargetCluster: "test-target-cluster",
 				},
-				PageSize:      1,
-				NextPageToken: []byte{13},
+				InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+				PageSize:                 1,
+				NextPageToken:            []byte{13},
 			})
 			if tc.err != nil {
 				expectation.Return(nil, tc.err)
@@ -1472,8 +1473,9 @@ func (s *adminHandlerSuite) TestGetDLQTasks() {
 					SourceCluster: "test-source-cluster",
 					TargetCluster: "test-target-cluster",
 				},
-				PageSize:      1,
-				NextPageToken: []byte{13},
+				InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+				PageSize:                 1,
+				NextPageToken:            []byte{13},
 			})
 			if tc.err != nil {
 				s.ErrorIs(err, tc.err)

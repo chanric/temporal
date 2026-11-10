@@ -33,14 +33,14 @@ func (l *Library) Components() []*chasm.RegistrableComponent {
 	return []*chasm.RegistrableComponent{
 		chasm.NewRegistrableComponent[*Segment](segmentComponentName,
 			chasm.WithBusinessIDAlias("HistoryDLQSegmentBusinessId"),
-			chasm.WithSearchAttributes(categorySearchAttribute, sourceSearchAttribute, targetSearchAttribute, pendingSearchAttribute)),
+			chasm.WithSearchAttributes(categorySearchAttribute, sourceSearchAttribute, targetSearchAttribute, minMessageIDSearchAttribute)),
 		chasm.NewRegistrableComponent[*Entry](entryComponentName),
 	}
 }
 
 var (
-	categorySearchAttribute = chasm.NewSearchAttributeInt("HistoryDLQCategory", chasm.SearchAttributeFieldInt01)
-	sourceSearchAttribute   = chasm.NewSearchAttributeKeyword("HistoryDLQSourceCluster", chasm.SearchAttributeFieldKeyword01)
-	targetSearchAttribute   = chasm.NewSearchAttributeKeyword("HistoryDLQTargetCluster", chasm.SearchAttributeFieldKeyword02)
-	pendingSearchAttribute  = chasm.NewSearchAttributeBool("HistoryDLQPending", chasm.SearchAttributeFieldBool01)
+	categorySearchAttribute     = chasm.NewSearchAttributeInt("HistoryDLQCategory", chasm.SearchAttributeFieldInt01)
+	sourceSearchAttribute       = chasm.NewSearchAttributeKeyword("HistoryDLQSourceCluster", chasm.SearchAttributeFieldKeyword01)
+	targetSearchAttribute       = chasm.NewSearchAttributeKeyword("HistoryDLQTargetCluster", chasm.SearchAttributeFieldKeyword02)
+	minMessageIDSearchAttribute = chasm.NewSearchAttributeInt("HistoryDLQMinMessageID", chasm.SearchAttributeFieldInt02)
 )
