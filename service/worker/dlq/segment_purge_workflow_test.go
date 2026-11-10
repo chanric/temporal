@@ -13,6 +13,7 @@ import (
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/chasm/lib/historydlq"
@@ -127,7 +128,7 @@ func TestPurgeSegmentPages(t *testing.T) {
 			var suite testsuite.WorkflowTestSuite
 			env := suite.NewTestWorkflowEnvironment()
 			component.RegisterActivities(env)
-			env.ExecuteWorkflow(component.purgeSegment, historydlq.ListEntriesRequest{
+			env.ExecuteWorkflow(purgeSegmentTestWorkflow(component), historydlq.ListEntriesRequest{
 				Segment: fixture.ref, InclusiveMaxMessageID: math.MaxInt64, PageSize: 1,
 			})
 			require.NoError(t, env.GetWorkflowError())
@@ -207,7 +208,7 @@ func TestPurgeSegmentEmptyPages(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	component.RegisterActivities(env)
-	env.ExecuteWorkflow(component.purgeSegment, historydlq.ListEntriesRequest{Segment: segment, InclusiveMaxMessageID: 10})
+	env.ExecuteWorkflow(purgeSegmentTestWorkflow(component), historydlq.ListEntriesRequest{Segment: segment, InclusiveMaxMessageID: 10})
 	require.NoError(t, env.GetWorkflowError())
 	var processed int64
 	require.NoError(t, env.GetWorkflowResult(&processed))
@@ -229,8 +230,16 @@ func TestPurgeSegmentMissingRun(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
 	component.RegisterActivities(env)
-	env.ExecuteWorkflow(component.purgeSegment, historydlq.ListEntriesRequest{Segment: segment, InclusiveMaxMessageID: 10})
+	env.ExecuteWorkflow(purgeSegmentTestWorkflow(component), historydlq.ListEntriesRequest{Segment: segment, InclusiveMaxMessageID: 10})
 	var applicationError *temporal.ApplicationError
 	require.ErrorAs(t, env.GetWorkflowError(), &applicationError)
 	require.True(t, applicationError.NonRetryable())
+}
+
+func purgeSegmentTestWorkflow(component *workerComponent) func(workflow.Context, historydlq.ListEntriesRequest) (int64, error) {
+	return func(ctx workflow.Context, req historydlq.ListEntriesRequest) (int64, error) {
+		var progress ProgressQueryResponse
+		err := component.purgeSegment(ctx, req, &progress)
+		return progress.NumberOfMessagesProcessed, err
+	}
 }

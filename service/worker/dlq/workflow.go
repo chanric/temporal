@@ -208,7 +208,7 @@ func newComponent(params workerComponentParams) workercommon.WorkerComponent {
 }
 
 //revive:disable:import-shadowing this doesn't actually shadow imports because it's a method, not a function
-func (c *workerComponent) workflow(ctx workflow.Context, params WorkflowParams) error {
+func (c *workerComponent) legacyWorkflow(ctx workflow.Context, params WorkflowParams) error {
 	queryResponse := ProgressQueryResponse{}
 	queryResponse.WorkflowType = params.WorkflowType
 	err := workflow.SetQueryHandler(ctx, QueryTypeProgress, func() (ProgressQueryResponse, error) {
@@ -280,8 +280,7 @@ func (c *workerComponent) mergeTasks(
 	lastProcessedMessageID *int64,
 	numberOfMessagesProcessed *int64,
 ) error {
-	params, err := parseMergeParams(params)
-	if err != nil {
+	if err := validateAndSetMergeDefaults(&params); err != nil {
 		return err
 	}
 
@@ -355,12 +354,12 @@ func (c *workerComponent) mergeTasks(
 	}
 }
 
-func parseMergeParams(params MergeParams) (MergeParams, error) {
+func validateAndSetMergeDefaults(params *MergeParams) error {
 	// Note that it's not strictly necessary to return a non-retryable error here because this is only called from
 	// within the workflow, and any errors returned from workflows are already non-retryable. However, we're returning
 	// a non-retryable error here in case this code is ever used within an activity.
 	if params.BatchSize < 0 {
-		return params, temporal.NewNonRetryableApplicationError(
+		return temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("Invalid batch size of %v", params.BatchSize),
 			errorTypeInvalidRequest,
 			ErrNegativeBatchSize,
@@ -368,7 +367,7 @@ func parseMergeParams(params MergeParams) (MergeParams, error) {
 	}
 
 	if params.BatchSize > MaxMergeBatchSize {
-		return params, temporal.NewNonRetryableApplicationError(
+		return temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("Batch size, %d, must be less than or equal to %d", params.BatchSize, MaxMergeBatchSize),
 			errorTypeInvalidRequest,
 			ErrMergeBatchSizeTooLarge,
@@ -379,7 +378,7 @@ func parseMergeParams(params MergeParams) (MergeParams, error) {
 		params.BatchSize = DefaultMergeBatchSize
 	}
 
-	return params, nil
+	return nil
 }
 
 // reEnqueueTasks groups tasks by shard ID and then sends individual requests to the history service to re-enqueue tasks
@@ -457,9 +456,8 @@ func (c *workerComponent) readTasks(
 }
 
 func (c *workerComponent) RegisterWorkflow(registry sdkworker.Registry) {
-	registry.RegisterWorkflowWithOptions(c.workflow, workflow.RegisterOptions{
-		Name: WorkflowName,
-	})
+	registry.RegisterWorkflowWithOptions(c.legacyWorkflow, workflow.RegisterOptions{Name: WorkflowName})
+	registry.RegisterWorkflowWithOptions(c.workflow, workflow.RegisterOptions{Name: MixedWorkflowName})
 }
 
 func (c *workerComponent) DedicatedWorkflowWorkerOptions() *workercommon.DedicatedWorkerOptions {
@@ -468,6 +466,7 @@ func (c *workerComponent) DedicatedWorkflowWorkerOptions() *workercommon.Dedicat
 }
 
 func (c *workerComponent) RegisterActivities(registry sdkworker.Registry) {
+	registry.RegisterActivityWithOptions(c.deleteTasksIfPresent, activity.RegisterOptions{Name: deleteTasksIfPresentActivityName})
 	registry.RegisterActivityWithOptions(c.discoverSegments, activity.RegisterOptions{Name: discoverSegmentsActivityName})
 	registry.RegisterActivityWithOptions(c.listSegmentEntries, activity.RegisterOptions{Name: listSegmentEntriesActivityName})
 	registry.RegisterActivityWithOptions(c.purgeEntries, activity.RegisterOptions{Name: purgeEntriesActivityName})

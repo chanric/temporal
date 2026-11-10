@@ -2119,7 +2119,7 @@ func (adh *AdminHandler) PurgeDLQTasks(
 	run, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: primitives.DefaultWorkerTaskQueue,
-	}, dlq.WorkflowName, dlq.WorkflowParams{
+	}, dlq.MixedWorkflowName, dlq.WorkflowParams{
 		WorkflowType: dlq.WorkflowTypeDelete,
 		DeleteParams: dlq.DeleteParams{
 			Key: dlq.Key{
@@ -2154,7 +2154,7 @@ func (adh *AdminHandler) MergeDLQTasks(ctx context.Context, request *adminservic
 	run, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: primitives.DefaultWorkerTaskQueue,
-	}, dlq.WorkflowName, dlq.WorkflowParams{
+	}, dlq.MixedWorkflowName, dlq.WorkflowParams{
 		WorkflowType: dlq.WorkflowTypeMerge,
 		MergeParams: dlq.MergeParams{
 			Key: dlq.Key{

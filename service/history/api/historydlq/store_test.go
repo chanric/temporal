@@ -520,3 +520,31 @@ func TestDiscoveryUsesRequestedMessageBound(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, response.DlqTasks)
 }
+
+func TestQueueV2MissingQueuePage(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []string{"missing first page", "missing continuation", "backend failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Parallel()
+			store, req, _ := readFixture(t)
+			store.chasmClient, store.visibilityManager = nil, nil
+			expected := persistence.NewQueueNotFoundError(persistence.QueueTypeHistoryDLQ, "absent")
+			if scenario == "missing continuation" {
+				req.NextPageToken = []byte("next")
+			}
+			if scenario == "backend failure" {
+				expected = serviceerror.NewUnavailable("database unavailable")
+			}
+			store.queueV2Manager = queueReader{read: func(context.Context, *persistence.ReadRawTasksRequest) (*persistence.ReadRawTasksResponse, error) {
+				return nil, expected
+			}}
+			response, err := store.GetDLQTasks(headers.SetCallerType(t.Context(), headers.CallerTypePreemptable), req)
+			if scenario == "missing first page" {
+				require.NoError(t, err)
+				protorequire.ProtoEqual(t, &historyservice.GetDLQTasksResponse{}, response)
+			} else {
+				require.ErrorAs(t, err, new(*serviceerror.Unavailable))
+			}
+		})
+	}
+}

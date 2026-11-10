@@ -1,0 +1,147 @@
+{
+  "events": [
+    {
+      "eventId": "1",
+      "eventTime": "2026-11-09T00:00:00Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+      "workflowExecutionStartedEventAttributes": {
+        "workflowType": {
+          "name": "temporal-sys-dlq-workflow"
+        },
+        "taskQueue": {
+          "name": "default-worker-tq"
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJXb3JrZmxvd1R5cGUiOiJtZXJnZSIsIkRlbGV0ZVBhcmFtcyI6eyJUYXNrQ2F0ZWdvcnlJRCI6MCwiU291cmNlQ2x1c3RlciI6IiIsIlRhcmdldENsdXN0ZXIiOiIiLCJNYXhNZXNzYWdlSUQiOjB9LCJNZXJnZVBhcmFtcyI6eyJUYXNrQ2F0ZWdvcnlJRCI6MywiU291cmNlQ2x1c3RlciI6InNvdXJjZSIsIlRhcmdldENsdXN0ZXIiOiJ0YXJnZXQiLCJNYXhNZXNzYWdlSUQiOjQyLCJCYXRjaFNpemUiOjB9fQ=="
+            }
+          ]
+        },
+        "workflowTaskTimeout": "10s",
+        "originalExecutionRunId": "run"
+      }
+    },
+    {
+      "eventId": "2",
+      "eventTime": "2026-11-09T00:00:01Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "workflowTaskScheduledEventAttributes": {
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "3",
+      "eventTime": "2026-11-09T00:00:02Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "2"
+      }
+    },
+    {
+      "eventId": "4",
+      "eventTime": "2026-11-09T00:00:03Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "2",
+        "startedEventId": "3"
+      }
+    },
+    {
+      "eventId": "5",
+      "eventTime": "2026-11-09T00:00:04Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "5",
+        "activityType": {
+          "name": "dlq-read-tasks-activity"
+        },
+        "taskQueue": {
+          "name": "temporal-sys-dlq-activity-tq"
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJUYXNrQ2F0ZWdvcnlJRCI6MywiU291cmNlQ2x1c3RlciI6InNvdXJjZSIsIlRhcmdldENsdXN0ZXIiOiJ0YXJnZXQiLCJNYXhNZXNzYWdlSUQiOjQyLCJCYXRjaFNpemUiOjEwMH0="
+            },
+            {
+              "metadata": {
+                "encoding": "YmluYXJ5L3BsYWlu"
+              }
+            }
+          ]
+        },
+        "startToCloseTimeout": "15s",
+        "workflowTaskCompletedEventId": "4"
+      }
+    },
+    {
+      "eventId": "6",
+      "eventTime": "2026-11-09T00:00:05Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": "5",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "7",
+      "eventTime": "2026-11-09T00:00:06Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wcm90b2J1Zg==",
+                "messageType": "dGVtcG9yYWwuc2VydmVyLmFwaS5oaXN0b3J5c2VydmljZS52MS5HZXRETFFUYXNrc1Jlc3BvbnNl"
+              },
+              "data": "e30="
+            }
+          ]
+        },
+        "scheduledEventId": "5",
+        "startedEventId": "6"
+      }
+    },
+    {
+      "eventId": "8",
+      "eventTime": "2026-11-09T00:00:07Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "workflowTaskScheduledEventAttributes": {
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "9",
+      "eventTime": "2026-11-09T00:00:08Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "8"
+      }
+    },
+    {
+      "eventId": "10",
+      "eventTime": "2026-11-09T00:00:09Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "8",
+        "startedEventId": "9"
+      }
+    },
+    {
+      "eventId": "11",
+      "eventTime": "2026-11-09T00:00:10Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED",
+      "workflowExecutionCompletedEventAttributes": {
+        "workflowTaskCompletedEventId": "10"
+      }
+    }
+  ]
+}

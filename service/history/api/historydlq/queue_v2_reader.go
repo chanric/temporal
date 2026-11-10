@@ -52,6 +52,9 @@ func (s *Store) readQueueV2Tasks(ctx context.Context, queueKey persistence.Queue
 func (s *Store) readQueueV2Page(ctx context.Context, queue persistence.QueueKey, req *historyservice.GetDLQTasksRequest, inclusiveMaxMessageID int64) (*historyservice.GetDLQTasksResponse, error) {
 	page, err := s.queueV2Manager.ReadRawTasks(ctx, &persistence.ReadRawTasksRequest{QueueKey: queue, PageSize: int(req.PageSize), NextPageToken: req.NextPageToken})
 	if err != nil {
+		if _, absent := errors.AsType[*serviceerror.NotFound](err); absent && len(req.NextPageToken) == 0 {
+			return &historyservice.GetDLQTasksResponse{}, nil
+		}
 		return nil, queueV2ReadError(err)
 	}
 	response := &historyservice.GetDLQTasksResponse{DlqTasks: make([]*commonspb.HistoryDLQTask, 0, len(page.Tasks)), NextPageToken: page.NextPageToken}

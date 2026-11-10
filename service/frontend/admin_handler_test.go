@@ -1520,7 +1520,7 @@ func (s *adminHandlerSuite) TestPurgeDLQTasks() {
 			expectation := mockSdkClient.EXPECT().ExecuteWorkflow(
 				gomock.Any(),
 				gomock.Any(),
-				dlq.WorkflowName,
+				dlq.MixedWorkflowName,
 				dlq.WorkflowParams{
 					WorkflowType: dlq.WorkflowTypeDelete,
 					DeleteParams: dlq.DeleteParams{

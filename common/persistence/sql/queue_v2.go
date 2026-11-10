@@ -256,6 +256,7 @@ func (q *queueV2) RangeDeleteMessages(
 			)
 		}
 		if !ok {
+			resp = &persistence.InternalRangeDeleteMessagesResponse{}
 			return nil
 		}
 		deleteRange, ok := persistence.GetDeleteRange(persistence.DeleteRequest{

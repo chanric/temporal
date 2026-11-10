@@ -6,7 +6,9 @@ import (
 	"go.temporal.io/server/common/primitives"
 )
 
-func (c *workerComponent) purgeSegment(ctx workflow.Context, req historydlq.ListEntriesRequest) (int64, error) {
+func (c *workerComponent) purgeSegment(
+	ctx workflow.Context, req historydlq.ListEntriesRequest, progress *ProgressQueryResponse,
+) error {
 	readContext := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           primitives.DLQActivityTQ,
 		StartToCloseTimeout: mergeTasksActivityTimeout,
@@ -17,11 +19,10 @@ func (c *workerComponent) purgeSegment(ctx workflow.Context, req historydlq.List
 		StartToCloseTimeout: deleteTasksActivityTimeout,
 		RetryPolicy:         deleteActivityRetryPolicy,
 	})
-	var processed int64
 	for {
 		var page historydlq.EntryPage
 		if err := workflow.ExecuteActivity(readContext, listSegmentEntriesActivityName, req).Get(ctx, &page); err != nil {
-			return processed, err
+			return err
 		}
 		if len(page.Refs) > 0 {
 			params := PurgeEntriesParams{Segment: req.Segment}
@@ -30,12 +31,12 @@ func (c *workerComponent) purgeSegment(ctx workflow.Context, req historydlq.List
 			}
 			var result PurgeEntriesResult
 			if err := workflow.ExecuteActivity(purgeContext, purgeEntriesActivityName, params).Get(ctx, &result); err != nil {
-				return processed, err
+				return err
 			}
-			processed += int64(len(result.ResolvedEntryKeys))
+			recordSegmentProgress(progress, page.Refs, int64(len(result.ResolvedEntryKeys)), nil)
 		}
 		if len(page.NextPageToken) == 0 {
-			return processed, nil
+			return nil
 		}
 		req.NextPageToken = page.NextPageToken
 	}
