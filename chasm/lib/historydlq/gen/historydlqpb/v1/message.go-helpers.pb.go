@@ -673,6 +673,80 @@ func (this *ReadSegmentMessagesResponse) Equal(that interface{}) bool {
 	return proto.Equal(this, that1)
 }
 
+// Marshal an object of type ResolveEntriesRequest to the protobuf v3 wire format
+func (val *ResolveEntriesRequest) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ResolveEntriesRequest from the protobuf v3 wire format
+func (val *ResolveEntriesRequest) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ResolveEntriesRequest) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ResolveEntriesRequest values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ResolveEntriesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ResolveEntriesRequest
+	switch t := that.(type) {
+	case *ResolveEntriesRequest:
+		that1 = t
+	case ResolveEntriesRequest:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
+// Marshal an object of type ResolveEntriesResponse to the protobuf v3 wire format
+func (val *ResolveEntriesResponse) Marshal() ([]byte, error) {
+	return proto.Marshal(val)
+}
+
+// Unmarshal an object of type ResolveEntriesResponse from the protobuf v3 wire format
+func (val *ResolveEntriesResponse) Unmarshal(buf []byte) error {
+	return proto.Unmarshal(buf, val)
+}
+
+// Size returns the size of the object, in bytes, once serialized
+func (val *ResolveEntriesResponse) Size() int {
+	return proto.Size(val)
+}
+
+// Equal returns whether two ResolveEntriesResponse values are equivalent by recursively
+// comparing the message's fields.
+// For more information see the documentation for
+// https://pkg.go.dev/google.golang.org/protobuf/proto#Equal
+func (this *ResolveEntriesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	var that1 *ResolveEntriesResponse
+	switch t := that.(type) {
+	case *ResolveEntriesResponse:
+		that1 = t
+	case ResolveEntriesResponse:
+		that1 = &t
+	default:
+		return false
+	}
+
+	return proto.Equal(this, that1)
+}
+
 var (
 	Resolution_shorthandValue = map[string]int32{
 		"Unspecified": 0,

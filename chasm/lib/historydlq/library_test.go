@@ -15,7 +15,7 @@ func TestLibraryRegistersHistoryDLQService(t *testing.T) {
 	newLibrary(handler).RegisterServices(server)
 	info, ok := server.GetServiceInfo()["temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService"]
 	require.True(t, ok)
-	require.Len(t, info.Methods, 6)
+	require.Len(t, info.Methods, 7)
 }
 
 func TestNilLibraryHasNoService(t *testing.T) {

@@ -26,7 +26,8 @@ import (
 )
 
 type testRPCClient struct {
-	readSegment func(context.Context, *historydlqpb.ReadSegmentMessagesRequest) (*historydlqpb.ReadSegmentMessagesResponse, error)
+	resolveEntries func(context.Context, *historydlqpb.ResolveEntriesRequest) (*historydlqpb.ResolveEntriesResponse, error)
+	readSegment    func(context.Context, *historydlqpb.ReadSegmentMessagesRequest) (*historydlqpb.ReadSegmentMessagesResponse, error)
 	historydlqpb.HistoryDLQServiceClient
 	enqueue  func(context.Context, *historydlqpb.EnqueueRequest) (*historydlqpb.EnqueueResponse, error)
 	read     func(context.Context, *historydlqpb.ReadMessageRequest) (*historydlqpb.ReadMessageResponse, error)
@@ -241,6 +242,11 @@ func TestRPCRoutingDescriptors(t *testing.T) {
 		&historydlqpb.DescribeSegmentRequest{SystemNamespaceId: primitives.SystemNamespaceID, Segment: &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue}},
 	)
 	requests = append(requests, &historydlqpb.ReadSegmentMessagesRequest{SystemNamespaceId: primitives.SystemNamespaceID, Segment: &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue}})
+	requests = append(requests, &historydlqpb.ResolveEntriesRequest{
+		SystemNamespaceId: primitives.SystemNamespaceID,
+		Segment:           &historydlqpb.SegmentRef{BusinessId: ref.BusinessId, RunId: ref.RunId, Queue: ref.Queue},
+		EntryKeys:         []string{ref.EntryKey},
+	})
 	methods := historydlqpb.File_temporal_server_chasm_lib_historydlq_proto_v1_service_proto.Services().Get(0).Methods()
 	get := func(msg protoreflect.Message, path string) string {
 		parts := strings.Split(path, ".")
@@ -399,4 +405,8 @@ func (c testRPCClient) DescribeSegment(ctx context.Context, req *historydlqpb.De
 
 func (c testRPCClient) ReadSegmentMessages(ctx context.Context, req *historydlqpb.ReadSegmentMessagesRequest, _ ...grpc.CallOption) (*historydlqpb.ReadSegmentMessagesResponse, error) {
 	return c.readSegment(ctx, req)
+}
+
+func (c testRPCClient) ResolveEntries(ctx context.Context, req *historydlqpb.ResolveEntriesRequest, _ ...grpc.CallOption) (*historydlqpb.ResolveEntriesResponse, error) {
+	return c.resolveEntries(ctx, req)
 }

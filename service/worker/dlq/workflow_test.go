@@ -13,6 +13,9 @@ import (
 	"go.temporal.io/server/api/adminservice/v1"
 	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/chasm/lib/historydlq"
+	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/persistence/serialization"
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/service/history/tasks"
@@ -20,6 +23,7 @@ import (
 	"go.temporal.io/server/service/worker/dlq"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 )
 
@@ -418,6 +422,8 @@ func TestModule(t *testing.T) {
 			fxtest.New(
 				t,
 				dlq.Module,
+				fx.Supply(historydlq.NewClient(log.NewNoopLogger(), nil)),
+				fx.Provide(func() chasm.VisibilityManager { return chasm.NewMockVisibilityManager(gomock.NewController(t)) }),
 				fx.Provide(
 					func() dlq.HistoryClient {
 						return params.client

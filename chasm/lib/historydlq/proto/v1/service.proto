@@ -40,5 +40,11 @@ service HistoryDLQService {
     option (temporal.server.api.routing.v1.routing).business_id = "segment.business_id";
     option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
   }
+  rpc ResolveEntries(ResolveEntriesRequest) returns (ResolveEntriesResponse) {
+    option (temporal.server.api.routing.v1.routing).namespace_id = "system_namespace_id";
+    option (temporal.server.api.routing.v1.routing).business_id = "segment.business_id";
+    option (temporal.server.api.common.v1.api_category).category = API_CATEGORY_STANDARD;
+  }
+
 }
 

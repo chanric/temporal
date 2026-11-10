@@ -238,3 +238,36 @@ func (h *serviceHandler) ReadSegmentMessages(ctx context.Context, req *historydl
 	}
 	return response, nil
 }
+
+func (h *serviceHandler) ResolveEntries(
+	ctx context.Context,
+	req *historydlqpb.ResolveEntriesRequest,
+) (*historydlqpb.ResolveEntriesResponse, error) {
+	segment, err := segmentProtoToRef(req.GetSegment())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.validateLocalRouting(req.GetSystemNamespaceId(), segment.Queue); err != nil {
+		return nil, err
+	}
+	request := ResolveEntriesRequest{
+		Segment:    segment,
+		EntryKeys:  req.GetEntryKeys(),
+		Resolution: req.GetResolution(),
+	}
+	if err := validateResolveEntriesRequest(request); err != nil {
+		return nil, err
+	}
+	_, _, err = chasm.UpdateComponent[*Segment](
+		ctx,
+		segmentRefToComponentRef(segment),
+		func(s *Segment, ctx chasm.MutableContext, req ResolveEntriesRequest) (struct{}, error) {
+			return struct{}{}, s.ResolveEntries(ctx, req)
+		},
+		request,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &historydlqpb.ResolveEntriesResponse{}, nil
+}

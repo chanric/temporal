@@ -227,3 +227,16 @@ func (c *Client) ReadSegmentMessages(ctx context.Context, req ReadSegmentMessage
 	}
 	return page, nil
 }
+
+func (c *Client) ResolveEntries(ctx context.Context, req ResolveEntriesRequest) error {
+	if err := validateResolveEntriesRequest(req); err != nil {
+		return err
+	}
+	_, err := c.rpc.ResolveEntries(ctx, &historydlqpb.ResolveEntriesRequest{
+		SystemNamespaceId: primitives.SystemNamespaceID,
+		Segment:           segmentRefToProto(req.Segment),
+		EntryKeys:         req.EntryKeys,
+		Resolution:        req.Resolution,
+	})
+	return err
+}

@@ -187,3 +187,18 @@ message ReadSegmentMessagesResponse {
   // Opaque continuation, empty when the current live view is exhausted.
   bytes next_page_token = 2;
 }
+
+// ResolveEntriesRequest removes selected locators from one exact segment run.
+message ResolveEntriesRequest {
+  // Cluster-local system namespace used for routing.
+  string system_namespace_id = 1;
+  // Exact segment run whose queue must match the request.
+  SegmentRef segment = 2;
+  // At most 1000 entry keys. Duplicate and already-absent keys are idempotent.
+  repeated string entry_keys = 3;
+  // MERGED after re-enqueue acceptance, or PURGED without re-enqueue.
+  Resolution resolution = 4;
+}
+
+// ResolveEntriesResponse confirms that the selected locators are absent after the update.
+message ResolveEntriesResponse {}

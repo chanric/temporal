@@ -16,6 +16,8 @@ import (
 	"go.temporal.io/server/api/adminservice/v1"
 	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/chasm/lib/historydlq"
 	"go.temporal.io/server/common/debug"
 	"go.temporal.io/server/common/headers"
 	"go.temporal.io/server/common/persistence"
@@ -122,15 +124,19 @@ type (
 
 	workerComponentParams struct {
 		fx.In
-		HistoryClient      HistoryClient
-		CurrentClusterName CurrentClusterName
-		TaskClientDialer   TaskClientDialer
+		HistoryClient          HistoryClient
+		HistoryDLQClient       *historydlq.Client
+		ChasmVisibilityManager chasm.VisibilityManager
+		CurrentClusterName     CurrentClusterName
+		TaskClientDialer       TaskClientDialer
 	}
 
 	workerComponent struct {
 		historyClient      HistoryClient
 		taskClientDialer   TaskClientDialer
 		currentClusterName string
+		chasmClient        segmentMetadataClient
+		visibilityManager  chasm.VisibilityManager
 	}
 )
 
@@ -194,6 +200,8 @@ var (
 func newComponent(params workerComponentParams) workercommon.WorkerComponent {
 	return &workerComponent{
 		historyClient:      params.HistoryClient,
+		chasmClient:        params.HistoryDLQClient,
+		visibilityManager:  params.ChasmVisibilityManager,
 		currentClusterName: string(params.CurrentClusterName),
 		taskClientDialer:   params.TaskClientDialer,
 	}
@@ -460,6 +468,8 @@ func (c *workerComponent) DedicatedWorkflowWorkerOptions() *workercommon.Dedicat
 }
 
 func (c *workerComponent) RegisterActivities(registry sdkworker.Registry) {
+	registry.RegisterActivityWithOptions(c.discoverSegments, activity.RegisterOptions{Name: discoverSegmentsActivityName})
+	registry.RegisterActivityWithOptions(c.listSegmentEntries, activity.RegisterOptions{Name: listSegmentEntriesActivityName})
 	registry.RegisterActivityWithOptions(c.deleteTasks, activity.RegisterOptions{
 		Name: deleteTasksActivityName,
 	})

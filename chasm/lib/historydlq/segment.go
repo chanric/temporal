@@ -1,8 +1,6 @@
 package historydlq
 
 import (
-	"errors"
-
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/server/chasm"
@@ -124,40 +122,11 @@ func (s *Segment) ReadEntry(ctx chasm.Context, ref MessageRef) (StoredMessage, e
 
 // ResolveEntry deletes an entry and its payload. Missing entries are already resolved.
 func (s *Segment) ResolveEntry(ctx chasm.MutableContext, ref MessageRef, reason historydlqpb.Resolution) error {
-	if reason != historydlqpb.RESOLUTION_MERGED && reason != historydlqpb.RESOLUTION_PURGED {
-		return serviceerror.NewInvalidArgument("invalid history DLQ resolution")
-	}
-	if err := validateEntryRef(ref); err != nil {
-		return err
-	}
-	entry, err := s.findEntry(ctx, ref)
-	if errors.Is(err, entryNotFoundErr) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	// TODO, add batch
-	minimum := s.GetMinMessageId()
-	if entry.GetMessageId() == minimum {
-		minimum = -1
-		for key, field := range s.Entries {
-			if key == ref.EntryKey {
-				continue
-			}
-			metadata, err := s.entryMetadata(ctx, key, field)
-			if err != nil {
-				return err
-			}
-			if minimum < 0 || metadata.MessageID < minimum {
-				minimum = metadata.MessageID
-			}
-		}
-	}
-	s.RetainedBytes -= int64(proto.Size(entry.EntryState)+len(ref.EntryKey)) + entry.GetPayloadSizeBytes() + segmentNodeReserve
-	delete(s.Entries, ref.EntryKey)
-	s.MinMessageId = minimum
-	return nil
+	return s.ResolveEntries(ctx, ResolveEntriesRequest{
+		Segment:    SegmentRef{Queue: ref.Queue, BusinessID: ref.BusinessID, RunID: ref.RunID},
+		EntryKeys:  []string{ref.EntryKey},
+		Resolution: reason,
+	})
 }
 
 func (s *Segment) LifecycleState(chasm.Context) chasm.LifecycleState {

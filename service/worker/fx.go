@@ -7,7 +7,9 @@ import (
 	otellog "go.opentelemetry.io/otel/log"
 	wcicomponent "go.temporal.io/auto-scaled-workers/wci/workercomponent"
 	"go.temporal.io/server/api/adminservice/v1"
+	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/chasm/lib/callback"
+	"go.temporal.io/server/chasm/lib/historydlq"
 	"go.temporal.io/server/chasm/lib/namespacereplication"
 	chasmscheduler "go.temporal.io/server/chasm/lib/scheduler"
 	"go.temporal.io/server/chasm/lib/scheduler/gen/schedulerpb/v1"
@@ -55,6 +57,9 @@ var Module = fx.Options(
 	workerdeployment.Module,
 	wcicomponent.Module,
 	dlq.Module,
+	historydlq.ClientModule,
+	fx.Provide(visibility.ChasmVisibilityManagerProvider),
+	fx.Invoke(registerHistoryDLQLibrary),
 	dummy.Module,
 	fx.Provide(schedulerpb.NewSchedulerServiceLayeredClient),
 	fx.Provide(
@@ -223,4 +228,8 @@ func ServerProvider(rpcFactory common.RPCFactory, logger log.Logger) *grpc.Serve
 		logger.Fatal("Failed to get gRPC server options", tag.Error(err))
 	}
 	return grpc.NewServer(opts...)
+}
+
+func registerHistoryDLQLibrary(registry *chasm.Registry) error {
+	return registry.Register(historydlq.NewNilLibrary())
 }

@@ -27,14 +27,15 @@ var File_temporal_server_chasm_lib_historydlq_proto_v1_service_proto protoreflec
 
 const file_temporal_server_chasm_lib_historydlq_proto_v1_service_proto_rawDesc = "" +
 	"\n" +
-	";temporal/server/chasm/lib/historydlq/proto/v1/service.proto\x12-temporal.server.chasm.lib.historydlq.proto.v1\x1a;temporal/server/chasm/lib/historydlq/proto/v1/message.proto\x1a0temporal/server/api/common/v1/api_category.proto\x1a.temporal/server/api/routing/v1/extension.proto2\xdd\t\n" +
+	";temporal/server/chasm/lib/historydlq/proto/v1/service.proto\x12-temporal.server.chasm.lib.historydlq.proto.v1\x1a;temporal/server/chasm/lib/historydlq/proto/v1/message.proto\x1a0temporal/server/api/common/v1/api_category.proto\x1a.temporal/server/api/routing/v1/extension.proto2\xb3\v\n" +
 	"\x11HistoryDLQService\x12\xb6\x01\n" +
 	"\aEnqueue\x12=.temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest\x1a>.temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse\",\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18\"\x12\x13system_namespace_id\x1a\vbusiness_id\x12\xc6\x01\n" +
 	"\vReadMessage\x12A.temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageRequest\x1aB.temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse\"0\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18&\x12\x13system_namespace_id\x1a\x0fref.business_id\x12\xba\x01\n" +
 	"\aResolve\x12=.temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest\x1a>.temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse\"0\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18&\x12\x13system_namespace_id\x1a\x0fref.business_id\x12\xca\x01\n" +
 	"\vListEntries\x12A.temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest\x1aB.temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse\"4\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18*\x12\x13system_namespace_id\x1a\x13segment.business_id\x12\xd6\x01\n" +
 	"\x0fDescribeSegment\x12E.temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest\x1aF.temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse\"4\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18*\x12\x13system_namespace_id\x1a\x13segment.business_id\x12\xe2\x01\n" +
-	"\x13ReadSegmentMessages\x12I.temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest\x1aJ.temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse\"4\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18*\x12\x13system_namespace_id\x1a\x13segment.business_idBJZHgo.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb;historydlqpbb\x06proto3"
+	"\x13ReadSegmentMessages\x12I.temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest\x1aJ.temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse\"4\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18*\x12\x13system_namespace_id\x1a\x13segment.business_id\x12\xd3\x01\n" +
+	"\x0eResolveEntries\x12D.temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest\x1aE.temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesResponse\"4\x8a\xb5\x18\x02\b\x01\xd2\xc3\x18*\x12\x13system_namespace_id\x1a\x13segment.business_idBJZHgo.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb;historydlqpbb\x06proto3"
 
 var file_temporal_server_chasm_lib_historydlq_proto_v1_service_proto_goTypes = []any{
 	(*EnqueueRequest)(nil),              // 0: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest
@@ -43,12 +44,14 @@ var file_temporal_server_chasm_lib_historydlq_proto_v1_service_proto_goTypes = [
 	(*ListEntriesRequest)(nil),          // 3: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest
 	(*DescribeSegmentRequest)(nil),      // 4: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest
 	(*ReadSegmentMessagesRequest)(nil),  // 5: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest
-	(*EnqueueResponse)(nil),             // 6: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
-	(*ReadMessageResponse)(nil),         // 7: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
-	(*ResolveResponse)(nil),             // 8: temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
-	(*ListEntriesResponse)(nil),         // 9: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
-	(*DescribeSegmentResponse)(nil),     // 10: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
-	(*ReadSegmentMessagesResponse)(nil), // 11: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
+	(*ResolveEntriesRequest)(nil),       // 6: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest
+	(*EnqueueResponse)(nil),             // 7: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
+	(*ReadMessageResponse)(nil),         // 8: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
+	(*ResolveResponse)(nil),             // 9: temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
+	(*ListEntriesResponse)(nil),         // 10: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
+	(*DescribeSegmentResponse)(nil),     // 11: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
+	(*ReadSegmentMessagesResponse)(nil), // 12: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
+	(*ResolveEntriesResponse)(nil),      // 13: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesResponse
 }
 var file_temporal_server_chasm_lib_historydlq_proto_v1_service_proto_depIdxs = []int32{
 	0,  // 0: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.Enqueue:input_type -> temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest
@@ -57,14 +60,16 @@ var file_temporal_server_chasm_lib_historydlq_proto_v1_service_proto_depIdxs = [
 	3,  // 3: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ListEntries:input_type -> temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest
 	4,  // 4: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.DescribeSegment:input_type -> temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest
 	5,  // 5: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ReadSegmentMessages:input_type -> temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest
-	6,  // 6: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.Enqueue:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
-	7,  // 7: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ReadMessage:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
-	8,  // 8: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.Resolve:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
-	9,  // 9: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ListEntries:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
-	10, // 10: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.DescribeSegment:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
-	11, // 11: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ReadSegmentMessages:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
-	6,  // [6:12] is the sub-list for method output_type
-	0,  // [0:6] is the sub-list for method input_type
+	6,  // 6: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ResolveEntries:input_type -> temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest
+	7,  // 7: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.Enqueue:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
+	8,  // 8: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ReadMessage:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
+	9,  // 9: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.Resolve:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
+	10, // 10: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ListEntries:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
+	11, // 11: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.DescribeSegment:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
+	12, // 12: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ReadSegmentMessages:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
+	13, // 13: temporal.server.chasm.lib.historydlq.proto.v1.HistoryDLQService.ResolveEntries:output_type -> temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesResponse
+	7,  // [7:14] is the sub-list for method output_type
+	0,  // [0:7] is the sub-list for method input_type
 	0,  // [0:0] is the sub-list for extension type_name
 	0,  // [0:0] is the sub-list for extension extendee
 	0,  // [0:0] is the sub-list for field type_name

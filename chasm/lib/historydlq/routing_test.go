@@ -60,6 +60,14 @@ func (s *routingServer) Resolve(
 	return &historydlqpb.ResolveResponse{}, s.fault()
 }
 
+func (s *routingServer) ResolveEntries(
+	_ context.Context,
+	req *historydlqpb.ResolveEntriesRequest,
+) (*historydlqpb.ResolveEntriesResponse, error) {
+	s.requests <- req
+	return &historydlqpb.ResolveEntriesResponse{}, s.fault()
+}
+
 func newLayeredClientTestEnvironment(
 	t *testing.T,
 	caching bool,
@@ -168,11 +176,19 @@ func TestLayeredClientRoutesByDLQIdentity(t *testing.T) {
 					Ref:               ref,
 				},
 			}
+			requests = append(requests, &historydlqpb.ResolveEntriesRequest{
+				SystemNamespaceId: primitives.SystemNamespaceID,
+				Segment:           &historydlqpb.SegmentRef{Queue: ref.Queue, BusinessId: ref.BusinessId, RunId: ref.RunId},
+				EntryKeys:         []string{ref.EntryKey},
+				Resolution:        historydlqpb.RESOLUTION_PURGED,
+			})
 			_, err := client.Enqueue(t.Context(), requests[0].(*historydlqpb.EnqueueRequest))
 			require.NoError(t, err)
 			_, err = client.ReadMessage(t.Context(), requests[1].(*historydlqpb.ReadMessageRequest))
 			require.NoError(t, err)
 			_, err = client.Resolve(t.Context(), requests[2].(*historydlqpb.ResolveRequest))
+			require.NoError(t, err)
+			_, err = client.ResolveEntries(t.Context(), requests[3].(*historydlqpb.ResolveEntriesRequest))
 			require.NoError(t, err)
 			require.Equal(
 				t,
@@ -182,8 +198,8 @@ func TestLayeredClientRoutesByDLQIdentity(t *testing.T) {
 			for _, req := range requests {
 				protorequire.ProtoEqual(t, req, await.Rcv(t, servers[0].requests))
 			}
-			require.Len(t, capture.Snapshot()[metrics.ClientRequests.Name()], 3)
-			require.Len(t, capture.Snapshot()[metrics.ClientLatency.Name()], 3)
+			require.Len(t, capture.Snapshot()[metrics.ClientRequests.Name()], 4)
+			require.Len(t, capture.Snapshot()[metrics.ClientLatency.Name()], 4)
 			require.Empty(t, capture.Snapshot()[metrics.ClientFailures.Name()])
 		})
 	}

@@ -2,9 +2,12 @@ package tests
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"math"
+	"reflect"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/chasm/lib/historydlq"
 	historydlqpb "go.temporal.io/server/chasm/lib/historydlq/gen/historydlqpb/v1"
+	"go.temporal.io/server/common"
 	"go.temporal.io/server/common/cluster"
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/definition"
@@ -34,6 +38,7 @@ import (
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -135,6 +140,22 @@ func newHistoryDLQTestEnvironment(t *testing.T, opts ...testcore.TestOption) *te
 
 func TestHistoryDLQCHASMSuite(t *testing.T) {
 	t.Parallel()
+	t.Run("WorkerSegmentDependencies", func(t *testing.T) {
+		t.Parallel()
+		env := newHistoryDLQTestEnvironment(t, testcore.WithWorkerService("history DLQ segment job dependencies"))
+		rpc := env.GetTestCluster().Host().HistoryDLQClient()
+		request := newHistoryDLQEnqueueRequest(t, env, 123, 1024)
+		accepted, err := rpc.Enqueue(t.Context(), request)
+		require.NoError(t, err)
+		response, err := rpc.ListEntries(t.Context(), &historydlqpb.ListEntriesRequest{
+			SystemNamespaceId:     primitives.SystemNamespaceID,
+			Segment:               &historydlqpb.SegmentRef{Queue: request.Queue, BusinessId: accepted.Ref.BusinessId, RunId: accepted.Ref.RunId},
+			InclusiveMaxMessageId: accepted.Ref.MessageId,
+			PageSize:              1,
+		})
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, accepted.Ref, response.Refs[0])
+	})
 	t.Run("WriterRollbackKeepsReads", func(t *testing.T) {
 		t.Parallel()
 		env := newHistoryDLQTestEnvironment(t, testcore.WithDynamicConfig(dynamicconfig.HistoryTaskDLQReadCHASM, true))
@@ -527,6 +548,111 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 			require.NotEmpty(t, response.Ref.RunId)
 		})
 	}
+	t.Run("ResolveEntriesPersistenceFailure", func(t *testing.T) {
+		t.Parallel()
+		var fail atomic.Bool
+		env := newHistoryDLQTestEnvironment(t,
+			testcore.WithDisableTestloggerFailure(),
+			testcore.InjectPersistenceFault(func(config.FaultInjectionTarget) error {
+				if fail.Load() {
+					return serviceerror.NewUnavailable("batch resolve persistence failed")
+				}
+				return nil
+			}, testcore.WithStore(config.ExecutionStoreName), testcore.WithMethod("UpdateWorkflowExecution")),
+		)
+		rpc := env.GetTestCluster().Host().HistoryDLQClient()
+		request := newHistoryDLQEnqueueRequest(t, env, 123, 1024)
+		var refs []*historydlqpb.MessageRef
+		for _, id := range []int64{123, 124, 125} {
+			request.SourceTaskIdentity.TaskId = id
+			accepted, err := rpc.Enqueue(t.Context(), request)
+			require.NoError(t, err)
+			refs = append(refs, accepted.Ref)
+		}
+		registry := chasm.NewRegistry(env.Logger)
+		require.NoError(t, registry.Register(&chasm.CoreLibrary{}))
+		require.NoError(t, registry.Register(historydlq.NewNilLibrary()))
+		archetypeID, ok := registry.ArchetypeIDOf(reflect.TypeFor[*historydlq.Segment]())
+		require.True(t, ok)
+		readState := func() *historydlqpb.SegmentState {
+			_, err := rpc.DescribeSegment(t.Context(), &historydlqpb.DescribeSegmentRequest{
+				SystemNamespaceId: primitives.SystemNamespaceID,
+				Segment:           &historydlqpb.SegmentRef{Queue: request.Queue, BusinessId: request.BusinessId, RunId: refs[0].RunId},
+			})
+			require.NoError(t, err)
+			state, err := env.GetTestCluster().ExecutionManager().GetWorkflowExecution(t.Context(), &persistence.GetWorkflowExecutionRequest{
+				ShardID:     common.WorkflowIDToHistoryShard(primitives.SystemNamespaceID, request.BusinessId, 4),
+				NamespaceID: primitives.SystemNamespaceID,
+				WorkflowID:  request.BusinessId,
+				RunID:       refs[0].RunId,
+				ArchetypeID: archetypeID,
+			})
+			require.NoError(t, err)
+			segment, _, err := chasm.NewDetachedExecution[*historydlq.Segment](t.Context(), state.State, registry)
+			require.NoError(t, err)
+			return segment.SegmentState
+		}
+		awaitMinimum := func(minimum int64) {
+			await.Require(t.Context(), t, func(t *await.T) {
+				ctx, err := env.GetTestCluster().Host().ChasmContext(t.Context())
+				require.NoError(t, err)
+				response, err := chasm.ListExecutions[*historydlq.Segment, *emptypb.Empty](ctx, &chasm.ListExecutionsRequest{
+					NamespaceName: primitives.SystemLocalNamespace,
+					Query:         fmt.Sprintf("HistoryDLQSourceCluster = '%s' AND HistoryDLQMinMessageID = %d", request.Queue.SourceCluster, minimum),
+					PageSize:      10,
+				})
+				require.NoError(t, err)
+				require.Len(t, response.Executions, 1)
+				require.Equal(t, refs[0].RunId, response.Executions[0].RunID)
+				require.Equal(t, request.BusinessId, response.Executions[0].BusinessID)
+			}, 10*time.Second, 100*time.Millisecond)
+		}
+		before := readState()
+		awaitMinimum(before.MinMessageId)
+		// Keep one entry with the highest numeric ID to verify the remaining minimum.
+		slices.SortFunc(refs, func(a, b *historydlqpb.MessageRef) int { return cmp.Compare(a.MessageId, b.MessageId) })
+		resolve := &historydlqpb.ResolveEntriesRequest{
+			SystemNamespaceId: primitives.SystemNamespaceID,
+			Segment:           &historydlqpb.SegmentRef{Queue: request.Queue, BusinessId: request.BusinessId, RunId: refs[0].RunId},
+			EntryKeys:         []string{refs[0].EntryKey, refs[1].EntryKey, refs[0].EntryKey},
+			Resolution:        historydlqpb.RESOLUTION_PURGED,
+		}
+		fail.Store(true)
+		response, err := rpc.ResolveEntries(t.Context(), resolve)
+		require.Error(t, err)
+		require.Nil(t, response)
+		fail.Store(false)
+		env.CloseShard(primitives.SystemNamespaceID, request.BusinessId)
+		protorequire.ProtoEqual(t, before, readState())
+		awaitMinimum(before.MinMessageId)
+		for _, ref := range refs {
+			message, err := rpc.ReadMessage(t.Context(), &historydlqpb.ReadMessageRequest{SystemNamespaceId: primitives.SystemNamespaceID, Ref: ref})
+			require.NoError(t, err)
+			protorequire.ProtoEqual(t, request.Task, message.Message.Task)
+		}
+		_, err = rpc.ResolveEntries(t.Context(), resolve)
+		require.NoError(t, err)
+		env.CloseShard(primitives.SystemNamespaceID, request.BusinessId)
+		after := readState()
+		require.Equal(t, refs[2].MessageId, after.MinMessageId)
+		awaitMinimum(after.MinMessageId)
+		require.Less(t, after.RetainedBytes, before.RetainedBytes)
+		_, err = rpc.ResolveEntries(t.Context(), resolve)
+		require.NoError(t, err)
+		protorequire.ProtoEqual(t, after, readState())
+		for _, ref := range refs[:2] {
+			_, err := rpc.ReadMessage(t.Context(), &historydlqpb.ReadMessageRequest{SystemNamespaceId: primitives.SystemNamespaceID, Ref: ref})
+			require.ErrorAs(t, err, new(*serviceerror.NotFound))
+		}
+		resolve.EntryKeys = []string{refs[2].EntryKey}
+		_, err = rpc.ResolveEntries(t.Context(), resolve)
+		require.NoError(t, err)
+		env.CloseShard(primitives.SystemNamespaceID, request.BusinessId)
+		empty := readState()
+		require.Equal(t, int64(-1), empty.MinMessageId)
+		require.Less(t, empty.RetainedBytes, after.RetainedBytes)
+		awaitMinimum(-1)
+	})
 	t.Run("ResolvePersistenceFailure", func(t *testing.T) {
 		t.Parallel()
 		var fail atomic.Bool
