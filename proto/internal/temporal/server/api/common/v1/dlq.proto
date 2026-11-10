@@ -38,3 +38,13 @@ message HistoryDLQKey {
   string source_cluster = 2;
   string target_cluster = 3;
 }
+
+// AddTaskFailure identifies a task whose acceptance was not confirmed by AddTasks.
+message AddTaskFailure {
+  // Zero-based index in the AddTasksRequest tasks list.
+  int32 task_index = 1;
+  // Error returned while validating or persisting the task.
+  string message = 2;
+  // Whether retrying the same task is disallowed by the service error classification.
+  bool non_retryable = 3;
+}

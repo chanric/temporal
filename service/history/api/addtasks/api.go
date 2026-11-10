@@ -5,12 +5,14 @@ import (
 
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/serviceerror"
+	commonspb "go.temporal.io/server/api/common/v1"
 	"go.temporal.io/server/api/historyservice/v1"
 	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/common/persistence"
 	"go.temporal.io/server/service/history/api"
 	historyi "go.temporal.io/server/service/history/interfaces"
 	"go.temporal.io/server/service/history/tasks"
+	"google.golang.org/grpc/codes"
 )
 
 type (
@@ -20,6 +22,10 @@ type (
 		DeserializeTask(category tasks.Category, blob *commonpb.DataBlob) (tasks.Task, error)
 	}
 
+	taskGroup struct {
+		tasks   map[tasks.Category][]tasks.Task
+		indices []int
+	}
 	taskGroupKey struct {
 		namespaceID string
 		businessID  string
@@ -34,10 +40,8 @@ const (
 	maxTasksPerRequest = 1000
 )
 
-// Invoke is the implementation of the history service's AddTasks API. This exposes the [shard.Context.AddTasks] API via
-// the history service. This method works by batching tasks by workflow run, and then invoking the relevant shard's
-// AddTasks API for each task batch. See [historyservice.HistoryServiceClient.AddTasks] for more details. We don't do
-// any validation on the shard ID because that must have been done by whoever provided the shard.Context to this method.
+// Invoke groups tasks by namespace, business ID and archetype before persisting them.
+// When requested, it reports failed task indexes and continues independent groups.
 func Invoke(
 	ctx context.Context,
 	shardContext historyi.ShardContext,
@@ -47,83 +51,92 @@ func Invoke(
 	taskRegistry tasks.TaskCategoryRegistry,
 ) (*historyservice.AddTasksResponse, error) {
 	if len(req.Tasks) > maxTasksPerRequest {
-		return nil, serviceerror.NewInvalidArgumentf(
-			"Too many tasks in request: %d > %d",
-			len(req.Tasks),
-			maxTasksPerRequest,
-		)
+		return nil, serviceerror.NewInvalidArgumentf("Too many tasks in request: %d > %d", len(req.Tasks), maxTasksPerRequest)
 	}
-
 	if len(req.Tasks) == 0 {
 		return nil, serviceerror.NewInvalidArgument("No tasks in request")
 	}
-
-	taskGroups := make(map[taskGroupKey]map[tasks.Category][]tasks.Task)
-
-	for i, task := range req.Tasks {
-		if task == nil {
-			return nil, serviceerror.NewInvalidArgumentf("Nil task at index: %d", i)
-		}
-
-		category, err := api.GetTaskCategory(int(task.CategoryId), taskRegistry)
+	taskGroups := make(map[taskGroupKey]*taskGroup)
+	failures := make([]*commonspb.AddTaskFailure, len(req.Tasks))
+	for i := range req.Tasks {
+		category, task, err := deserializeTask(req, i, deserializer, numShards, taskRegistry)
 		if err != nil {
-			return nil, err
+			if !req.ReturnTaskFailures {
+				return nil, err
+			}
+			failures[i] = taskFailure(i, err)
+			continue
 		}
-
-		if task.Blob == nil {
-			return nil, serviceerror.NewInvalidArgumentf(
-				"Task blob is nil at index: %d",
-				i,
-			)
-		}
-
-		deserializedTask, err := deserializer.DeserializeTask(category, task.Blob)
-		if err != nil {
-			return nil, err
-		}
-
-		shardID := tasks.GetShardIDForTask(deserializedTask, numShards)
-		if shardID != int(req.ShardId) {
-			return nil, serviceerror.NewInvalidArgumentf(
-				"Task is for wrong shard: index = %d, task shard = %d, request shard = %d",
-				i, shardID, req.ShardId,
-			)
-		}
-
-		// group by namespaceID + execution businessID + archetypeID
 		archetypeID := chasm.WorkflowArchetypeID
-		if hasArchetypeID, ok := deserializedTask.(tasks.HasArchetypeID); ok {
+		if hasArchetypeID, ok := task.(tasks.HasArchetypeID); ok {
 			archetypeID = hasArchetypeID.GetArchetypeID()
 		}
 		if archetypeID == chasm.UnspecifiedArchetypeID {
 			archetypeID = chasm.WorkflowArchetypeID
 		}
-		groupKey := taskGroupKey{
-			namespaceID: deserializedTask.GetNamespaceID(),
-			businessID:  deserializedTask.GetWorkflowID(),
-			archetypeID: archetypeID,
+		key := taskGroupKey{namespaceID: task.GetNamespaceID(), businessID: task.GetWorkflowID(), archetypeID: archetypeID}
+		group, present := taskGroups[key]
+		if !present {
+			group = &taskGroup{tasks: make(map[tasks.Category][]tasks.Task)}
+			taskGroups[key] = group
 		}
-
-		if _, ok := taskGroups[groupKey]; !ok {
-			taskGroups[groupKey] = make(map[tasks.Category][]tasks.Task, 1)
-		}
-
-		taskGroups[groupKey][category] = append(taskGroups[groupKey][category], deserializedTask)
+		group.tasks[category] = append(group.tasks[category], task)
+		group.indices = append(group.indices, i)
 	}
-
-	for groupKey, taskGroup := range taskGroups {
+	for key, group := range taskGroups {
 		err := shardContext.AddTasks(ctx, &persistence.AddHistoryTasksRequest{
-			ShardID:     shardContext.GetShardID(),
-			RangeID:     shardContext.GetRangeID(),
-			NamespaceID: groupKey.namespaceID,
-			WorkflowID:  groupKey.businessID,
-			ArchetypeID: groupKey.archetypeID,
-			Tasks:       taskGroup,
+			ShardID: shardContext.GetShardID(), RangeID: shardContext.GetRangeID(),
+			NamespaceID: key.namespaceID, WorkflowID: key.businessID, ArchetypeID: key.archetypeID, Tasks: group.tasks,
 		})
 		if err != nil {
-			return nil, err
+			if !req.ReturnTaskFailures {
+				return nil, err
+			}
+			for _, i := range group.indices {
+				failures[i] = taskFailure(i, err)
+			}
 		}
 	}
+	response := &historyservice.AddTasksResponse{}
+	for _, failure := range failures {
+		if failure != nil {
+			response.Failures = append(response.Failures, failure)
+		}
+	}
+	return response, nil
+}
 
-	return &historyservice.AddTasksResponse{}, nil
+func deserializeTask(
+	req *historyservice.AddTasksRequest, index int, deserializer TaskDeserializer,
+	numShards int, registry tasks.TaskCategoryRegistry,
+) (tasks.Category, tasks.Task, error) {
+	task := req.Tasks[index]
+	if task == nil {
+		return tasks.Category{}, nil, serviceerror.NewInvalidArgumentf("Nil task at index: %d", index)
+	}
+	category, err := api.GetTaskCategory(int(task.CategoryId), registry)
+	if err != nil {
+		return tasks.Category{}, nil, err
+	}
+	if task.Blob == nil {
+		return tasks.Category{}, nil, serviceerror.NewInvalidArgumentf("Task blob is nil at index: %d", index)
+	}
+	deserialized, err := deserializer.DeserializeTask(category, task.Blob)
+	if err != nil {
+		return tasks.Category{}, nil, err
+	}
+	shardID := tasks.GetShardIDForTask(deserialized, numShards)
+	if shardID != int(req.ShardId) {
+		return tasks.Category{}, nil, serviceerror.NewInvalidArgumentf(
+			"Task is for wrong shard: index = %d, task shard = %d, request shard = %d", index, shardID, req.ShardId,
+		)
+	}
+	return category, deserialized, nil
+}
+
+func taskFailure(index int, err error) *commonspb.AddTaskFailure {
+	code := serviceerror.ToStatus(err).Code()
+	return &commonspb.AddTaskFailure{
+		TaskIndex: int32(index), Message: err.Error(), NonRetryable: code == codes.InvalidArgument || code == codes.NotFound,
+	}
 }

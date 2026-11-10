@@ -20,6 +20,7 @@ type SegmentJobParams struct {
 }
 
 type segmentClient interface {
+	ReadMessage(context.Context, historydlq.MessageRef) (historydlq.StoredMessage, error)
 	ResolveEntries(context.Context, historydlq.ResolveEntriesRequest) error
 	ListEntries(context.Context, historydlq.ListEntriesRequest) (historydlq.EntryPage, error)
 }

@@ -471,6 +471,7 @@ func (c *workerComponent) RegisterActivities(registry sdkworker.Registry) {
 	registry.RegisterActivityWithOptions(c.discoverSegments, activity.RegisterOptions{Name: discoverSegmentsActivityName})
 	registry.RegisterActivityWithOptions(c.listSegmentEntries, activity.RegisterOptions{Name: listSegmentEntriesActivityName})
 	registry.RegisterActivityWithOptions(c.purgeEntries, activity.RegisterOptions{Name: purgeEntriesActivityName})
+	registry.RegisterActivityWithOptions(c.mergeEntries, activity.RegisterOptions{Name: mergeEntriesActivityName})
 	registry.RegisterActivityWithOptions(c.deleteTasks, activity.RegisterOptions{
 		Name: deleteTasksActivityName,
 	})

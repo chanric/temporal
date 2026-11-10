@@ -593,9 +593,16 @@ message AddTasksRequest {
     temporal.api.common.v1.DataBlob blob = 2;
   }
   repeated Task tasks = 2;
+  // Return failures by task index and continue independent groups after an error.
+  // When false, any task error fails the RPC instead of returning task failures.
+  bool return_task_failures = 3;
 }
 
-message AddTasksResponse {}
+message AddTasksResponse {
+  // Failed or unconfirmed tasks when return_task_failures is true. Omitted indexes
+  // were accepted when the RPC succeeds; an RPC error leaves all tasks unconfirmed.
+  repeated temporal.server.api.common.v1.AddTaskFailure failures = 1;
+}
 
 message ListQueuesRequest {
   int32 queue_type = 1;

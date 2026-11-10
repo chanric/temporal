@@ -3124,3 +3124,15 @@ func (s *adminHandlerSuite) TestCountExecutions() {
 		s.ErrorAs(err, &invalidArg)
 	})
 }
+
+func (s *adminHandlerSuite) TestAddTasks_ReturnTaskFailures() {
+	failures := []*commonspb.AddTaskFailure{{TaskIndex: 0, Message: "invalid task", NonRetryable: true}}
+	s.mockHistoryClient.EXPECT().AddTasks(gomock.Any(), &historyservice.AddTasksRequest{
+		ShardId: 13, ReturnTaskFailures: true, Tasks: []*historyservice.AddTasksRequest_Task{nil, {CategoryId: 3}},
+	}).Return(&historyservice.AddTasksResponse{Failures: failures}, nil)
+	response, err := s.handler.AddTasks(s.T().Context(), &adminservice.AddTasksRequest{
+		ShardId: 13, ReturnTaskFailures: true, Tasks: []*adminservice.AddTasksRequest_Task{nil, {CategoryId: 3}},
+	})
+	s.NoError(err)
+	s.Equal(&adminservice.AddTasksResponse{Failures: failures}, response)
+}

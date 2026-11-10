@@ -2261,20 +2261,24 @@ func (adh *AdminHandler) AddTasks(
 ) (*adminservice.AddTasksResponse, error) {
 	historyTasks := make([]*historyservice.AddTasksRequest_Task, len(request.Tasks))
 	for i, task := range request.Tasks {
+		if task == nil {
+			continue
+		}
 		historyTasks[i] = &historyservice.AddTasksRequest_Task{
 			CategoryId: task.CategoryId,
 			Blob:       task.Blob,
 		}
 	}
 	historyServiceRequest := &historyservice.AddTasksRequest{
-		ShardId: request.ShardId,
-		Tasks:   historyTasks,
+		ShardId:            request.ShardId,
+		Tasks:              historyTasks,
+		ReturnTaskFailures: request.ReturnTaskFailures,
 	}
-	_, err := adh.historyClient.AddTasks(ctx, historyServiceRequest)
+	response, err := adh.historyClient.AddTasks(ctx, historyServiceRequest)
 	if err != nil {
 		return nil, err
 	}
-	return &adminservice.AddTasksResponse{}, nil
+	return &adminservice.AddTasksResponse{Failures: response.GetFailures()}, nil
 }
 
 func (adh *AdminHandler) ListQueues(

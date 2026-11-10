@@ -244,6 +244,70 @@ func (x *HistoryDLQKey) GetTargetCluster() string {
 	return ""
 }
 
+// AddTaskFailure identifies a task whose acceptance was not confirmed by AddTasks.
+type AddTaskFailure struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Zero-based index in the AddTasksRequest tasks list.
+	TaskIndex int32 `protobuf:"varint,1,opt,name=task_index,json=taskIndex,proto3" json:"task_index,omitempty"`
+	// Error returned while validating or persisting the task.
+	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Whether retrying the same task is disallowed by the service error classification.
+	NonRetryable  bool `protobuf:"varint,3,opt,name=non_retryable,json=nonRetryable,proto3" json:"non_retryable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddTaskFailure) Reset() {
+	*x = AddTaskFailure{}
+	mi := &file_temporal_server_api_common_v1_dlq_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddTaskFailure) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddTaskFailure) ProtoMessage() {}
+
+func (x *AddTaskFailure) ProtoReflect() protoreflect.Message {
+	mi := &file_temporal_server_api_common_v1_dlq_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddTaskFailure.ProtoReflect.Descriptor instead.
+func (*AddTaskFailure) Descriptor() ([]byte, []int) {
+	return file_temporal_server_api_common_v1_dlq_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AddTaskFailure) GetTaskIndex() int32 {
+	if x != nil {
+		return x.TaskIndex
+	}
+	return 0
+}
+
+func (x *AddTaskFailure) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *AddTaskFailure) GetNonRetryable() bool {
+	if x != nil {
+		return x.NonRetryable
+	}
+	return false
+}
+
 var File_temporal_server_api_common_v1_dlq_proto protoreflect.FileDescriptor
 
 const file_temporal_server_api_common_v1_dlq_proto_rawDesc = "" +
@@ -261,7 +325,12 @@ const file_temporal_server_api_common_v1_dlq_proto_rawDesc = "" +
 	"\rHistoryDLQKey\x12#\n" +
 	"\rtask_category\x18\x01 \x01(\x05R\ftaskCategory\x12%\n" +
 	"\x0esource_cluster\x18\x02 \x01(\tR\rsourceCluster\x12%\n" +
-	"\x0etarget_cluster\x18\x03 \x01(\tR\rtargetClusterB/Z-go.temporal.io/server/api/common/v1;commonspbb\x06proto3"
+	"\x0etarget_cluster\x18\x03 \x01(\tR\rtargetCluster\"n\n" +
+	"\x0eAddTaskFailure\x12\x1d\n" +
+	"\n" +
+	"task_index\x18\x01 \x01(\x05R\ttaskIndex\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12#\n" +
+	"\rnon_retryable\x18\x03 \x01(\bR\fnonRetryableB/Z-go.temporal.io/server/api/common/v1;commonspbb\x06proto3"
 
 var (
 	file_temporal_server_api_common_v1_dlq_proto_rawDescOnce sync.Once
@@ -275,16 +344,17 @@ func file_temporal_server_api_common_v1_dlq_proto_rawDescGZIP() []byte {
 	return file_temporal_server_api_common_v1_dlq_proto_rawDescData
 }
 
-var file_temporal_server_api_common_v1_dlq_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_temporal_server_api_common_v1_dlq_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_temporal_server_api_common_v1_dlq_proto_goTypes = []any{
 	(*HistoryTask)(nil),            // 0: temporal.server.api.common.v1.HistoryTask
 	(*HistoryDLQTaskMetadata)(nil), // 1: temporal.server.api.common.v1.HistoryDLQTaskMetadata
 	(*HistoryDLQTask)(nil),         // 2: temporal.server.api.common.v1.HistoryDLQTask
 	(*HistoryDLQKey)(nil),          // 3: temporal.server.api.common.v1.HistoryDLQKey
-	(*v1.DataBlob)(nil),            // 4: temporal.api.common.v1.DataBlob
+	(*AddTaskFailure)(nil),         // 4: temporal.server.api.common.v1.AddTaskFailure
+	(*v1.DataBlob)(nil),            // 5: temporal.api.common.v1.DataBlob
 }
 var file_temporal_server_api_common_v1_dlq_proto_depIdxs = []int32{
-	4, // 0: temporal.server.api.common.v1.HistoryTask.blob:type_name -> temporal.api.common.v1.DataBlob
+	5, // 0: temporal.server.api.common.v1.HistoryTask.blob:type_name -> temporal.api.common.v1.DataBlob
 	1, // 1: temporal.server.api.common.v1.HistoryDLQTask.metadata:type_name -> temporal.server.api.common.v1.HistoryDLQTaskMetadata
 	0, // 2: temporal.server.api.common.v1.HistoryDLQTask.payload:type_name -> temporal.server.api.common.v1.HistoryTask
 	3, // [3:3] is the sub-list for method output_type
@@ -305,7 +375,7 @@ func file_temporal_server_api_common_v1_dlq_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_temporal_server_api_common_v1_dlq_proto_rawDesc), len(file_temporal_server_api_common_v1_dlq_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
