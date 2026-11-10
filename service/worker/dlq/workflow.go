@@ -135,7 +135,7 @@ type (
 		historyClient      HistoryClient
 		taskClientDialer   TaskClientDialer
 		currentClusterName string
-		chasmClient        segmentMetadataClient
+		chasmClient        segmentClient
 		visibilityManager  chasm.VisibilityManager
 	}
 )
@@ -470,6 +470,7 @@ func (c *workerComponent) DedicatedWorkflowWorkerOptions() *workercommon.Dedicat
 func (c *workerComponent) RegisterActivities(registry sdkworker.Registry) {
 	registry.RegisterActivityWithOptions(c.discoverSegments, activity.RegisterOptions{Name: discoverSegmentsActivityName})
 	registry.RegisterActivityWithOptions(c.listSegmentEntries, activity.RegisterOptions{Name: listSegmentEntriesActivityName})
+	registry.RegisterActivityWithOptions(c.purgeEntries, activity.RegisterOptions{Name: purgeEntriesActivityName})
 	registry.RegisterActivityWithOptions(c.deleteTasks, activity.RegisterOptions{
 		Name: deleteTasksActivityName,
 	})

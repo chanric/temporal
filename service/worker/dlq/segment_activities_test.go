@@ -19,6 +19,7 @@ import (
 )
 
 type testSegmentMetadataClient struct {
+	segmentClient
 	list func(context.Context, historydlq.ListEntriesRequest) (historydlq.EntryPage, error)
 }
 

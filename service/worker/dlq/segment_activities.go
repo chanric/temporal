@@ -19,7 +19,8 @@ type SegmentJobParams struct {
 	MaxMessageID int64
 }
 
-type segmentMetadataClient interface {
+type segmentClient interface {
+	ResolveEntries(context.Context, historydlq.ResolveEntriesRequest) error
 	ListEntries(context.Context, historydlq.ListEntriesRequest) (historydlq.EntryPage, error)
 }
 

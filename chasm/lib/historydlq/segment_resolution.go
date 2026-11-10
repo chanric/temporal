@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// MaxResolveBatchSize limits the number of entry keys in one segment update.
+// MaxResolveBatchSize limits the number of entry keys in one segment update.  Consider adjusting this
 const MaxResolveBatchSize = 1000
 
 type ResolveEntriesRequest struct {
