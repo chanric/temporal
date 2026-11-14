@@ -78,7 +78,10 @@ var Module = fx.Options(
 
 	fx.Provide(ClusterNameProvider),
 	fx.Provide(HealthSignalAggregatorProvider),
-	fx.Provide(persistence.NewDLQMetricsEmitter),
+	fx.Provide(fx.Annotate(
+		persistence.NewDLQMetricsEmitter,
+		fx.ParamTags("", "", "", "", "", "", `optional:"true"`),
+	)),
 	fx.Provide(EventBlobCacheProvider),
 	fx.Provide(EnableDataLossMetricsProvider),
 	fx.Provide(EnableBestEffortDeleteTasksOnWorkflowUpdateProvider),

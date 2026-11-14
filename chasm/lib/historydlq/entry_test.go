@@ -12,6 +12,6 @@ import (
 func TestEntryReadMissingTask(t *testing.T) {
 	t.Parallel()
 	entry := &Entry{EntryState: &historydlqpb.EntryState{}}
-	_, err := entry.Read(&chasm.MockContext{}, MessageRef{})
+	_, err := entry.Read(&chasm.MockContext{}, MessageRef{}, 7)
 	require.ErrorAs(t, err, new(*serviceerror.DataLoss))
 }

@@ -12,9 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/temporalio/sqlparser"
+	commonpb "go.temporal.io/api/common/v1"
+	"go.temporal.io/api/serviceerror"
 	chasmspb "go.temporal.io/server/api/chasm/v1"
 	"go.temporal.io/server/api/visibilityservice/v1"
 	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/primitives"
 	"go.uber.org/mock/gomock"
 )
@@ -41,23 +44,12 @@ func TestDiscoverSegmentsAllPages(t *testing.T) {
 	queue := testRequest().Queue
 	var rows []*chasmspb.VisibilityExecutionInfo
 	var want []SegmentRef
-	for _, shard := range []int32{7, 8} {
-		for bucket, producer := range []TaskIdentity{
-			{NamespaceID: "namespace-9", ArchetypeID: 9, BusinessID: "business-9"},
-			{NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"},
-			{NamespaceID: "namespace-2", ArchetypeID: 2, BusinessID: "business-2"},
-			{NamespaceID: "namespace-1", ArchetypeID: 1, BusinessID: "business-1"},
-		} {
-			identity := producer
-			identity.SourceShardID = shard
-			identity.TaskID = 1
-			require.Equal(t, uint32(bucket), SegmentBucketID(identity))
-			id, err := SegmentBusinessID(queue, identity)
-			require.NoError(t, err)
-			run := primitives.NewUUID().String()
-			rows = append(rows, &chasmspb.VisibilityExecutionInfo{BusinessId: id, RunId: run})
-			want = append(want, SegmentRef{Queue: queue, BusinessID: id, RunID: run})
-		}
+	for _, shard := range []int32{7, 8, 9, 10} {
+		id, err := SegmentBusinessID(queue, TaskIdentity{SourceShardID: shard, TaskID: 1})
+		require.NoError(t, err)
+		run := primitives.NewUUID().String()
+		rows = append(rows, &chasmspb.VisibilityExecutionInfo{BusinessId: id, RunId: run})
+		want = append(want, SegmentRef{Queue: queue, BusinessID: id, RunID: run})
 	}
 	// Include a duplicate row and a separate run of the same Business ID.
 	rows = append(rows, rows[0], &chasmspb.VisibilityExecutionInfo{BusinessId: rows[0].BusinessId, RunId: primitives.NewUUID().String()})
@@ -143,6 +135,47 @@ func TestDiscoverSegmentsMinimumBound(t *testing.T) {
 			})
 			_, err := DiscoverSegments(t.Context(), vis, testRequest().Queue, bound)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestDiscoverAllSegmentsInvalidQueueAttributes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, field string
+		value       any
+	}{
+		{"missing category", "HistoryDLQCategory", nil},
+		{"category exceeds int32", "HistoryDLQCategory", int64(1 << 32)},
+		{"invalid source type", "HistoryDLQSourceCluster", 42},
+		{"empty target", "HistoryDLQTargetCluster", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			id, err := SegmentBusinessID(testRequest().Queue, testRequest().SourceTaskIdentity)
+			require.NoError(t, err)
+			category, err := payload.Encode(int64(1))
+			require.NoError(t, err)
+			fields := map[string]*commonpb.Payload{
+				"HistoryDLQCategory":      category,
+				"HistoryDLQSourceCluster": payload.EncodeString("source"),
+				"HistoryDLQTargetCluster": payload.EncodeString("target"),
+			}
+			if tc.value == nil {
+				delete(fields, tc.field)
+			} else {
+				encoded, err := payload.Encode(tc.value)
+				require.NoError(t, err)
+				fields[tc.field] = encoded
+			}
+			vis := chasm.NewMockVisibilityManager(gomock.NewController(t))
+			vis.EXPECT().ListExecutions(gomock.Any(), reflect.TypeFor[*Segment](), gomock.Any()).Return(
+				&visibilityservice.ListChasmExecutionsResponse{Executions: []*chasmspb.VisibilityExecutionInfo{{
+					BusinessId: id, RunId: "run", ChasmSearchAttributes: &commonpb.SearchAttributes{IndexedFields: fields},
+				}}}, nil)
+			refs, err := DiscoverAllSegments(t.Context(), vis)
+			require.ErrorAs(t, err, new(*serviceerror.DataLoss))
+			require.Nil(t, refs)
 		})
 	}
 }

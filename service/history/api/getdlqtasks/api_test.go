@@ -67,9 +67,11 @@ func TestInvoke_UnavailableError(t *testing.T) {
 		historydlq.NewStore(failingHistoryTaskQueueManager{}, tasks.NewDefaultTaskCategoryRegistry(), nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.GetDLQTasksRequest{
 			DlqKey: &commonspb.HistoryDLQKey{
-				TaskCategory: int32(tasks.CategoryTransfer.ID()),
+				TaskCategory:  int32(tasks.CategoryTransfer.ID()),
+				SourceCluster: "source",
+				TargetCluster: "target",
 			},
-			PageSize: 0,
+			PageSize: 1,
 		},
 	)
 

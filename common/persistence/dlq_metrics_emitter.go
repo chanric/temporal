@@ -18,20 +18,23 @@ const (
 	emitDLQMetricsInterval = 3 * time.Hour
 )
 
+// ListDLQQueuesFn lists history DLQ counts for metrics reporting.
+type ListDLQQueuesFn func(context.Context, *ListQueuesRequest) (*ListQueuesResponse, error)
+
 // DLQMetricsEmitter emits the number of messages in DLQ in each task category.
 // This only has to be emitted from one history service instance. For this, DLQMetricsEmitter will only emit metrics
 // if the history service it currently run hosts shard 1.
 type (
 	DLQMetricsEmitter struct {
-		status                  int32
-		shutdownCh              chan struct{}
-		metricsHandler          metrics.Handler
-		logger                  log.Logger
-		emitMetricsTimer        *time.Ticker
-		historyTaskQueueManager HistoryTaskQueueManager
-		historyServiceResolver  membership.ServiceResolver
-		hostInfoProvider        membership.HostInfoProvider
-		taskCategoryRegistry    tasks.TaskCategoryRegistry
+		status                 int32
+		shutdownCh             chan struct{}
+		metricsHandler         metrics.Handler
+		logger                 log.Logger
+		emitMetricsTimer       *time.Ticker
+		listQueues             ListDLQQueuesFn
+		historyServiceResolver membership.ServiceResolver
+		hostInfoProvider       membership.HostInfoProvider
+		taskCategoryRegistry   tasks.TaskCategoryRegistry
 	}
 )
 
@@ -42,17 +45,21 @@ func NewDLQMetricsEmitter(
 	historyServiceResolver membership.ServiceResolver,
 	hostInfoProvider membership.HostInfoProvider,
 	taskCategoryRegistry tasks.TaskCategoryRegistry,
+	listQueues ListDLQQueuesFn,
 ) *DLQMetricsEmitter {
+	if listQueues == nil {
+		listQueues = manager.ListQueues
+	}
 	return &DLQMetricsEmitter{
-		status:                  common.DaemonStatusInitialized,
-		shutdownCh:              make(chan struct{}),
-		metricsHandler:          metricsHandler,
-		emitMetricsTimer:        time.NewTicker(emitDLQMetricsInterval),
-		logger:                  logger,
-		historyTaskQueueManager: manager,
-		historyServiceResolver:  historyServiceResolver,
-		hostInfoProvider:        hostInfoProvider,
-		taskCategoryRegistry:    taskCategoryRegistry,
+		status:                 common.DaemonStatusInitialized,
+		shutdownCh:             make(chan struct{}),
+		metricsHandler:         metricsHandler,
+		emitMetricsTimer:       time.NewTicker(emitDLQMetricsInterval),
+		logger:                 logger,
+		listQueues:             listQueues,
+		historyServiceResolver: historyServiceResolver,
+		hostInfoProvider:       hostInfoProvider,
+		taskCategoryRegistry:   taskCategoryRegistry,
 	}
 }
 
@@ -126,7 +133,7 @@ func (s *DLQMetricsEmitter) getDLQList() ([]QueueInfo, error) {
 	var nextPageToken []byte
 	for {
 		ctx := headers.SetCallerInfo(context.Background(), headers.SystemPreemptableCallerInfo)
-		resp, err := s.historyTaskQueueManager.ListQueues(ctx, &ListQueuesRequest{
+		resp, err := s.listQueues(ctx, &ListQueuesRequest{
 			QueueType:     QueueTypeHistoryDLQ,
 			PageSize:      100,
 			NextPageToken: nextPageToken,

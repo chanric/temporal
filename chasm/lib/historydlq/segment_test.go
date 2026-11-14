@@ -120,7 +120,6 @@ func TestSegmentQueueIdentity(t *testing.T) {
 	require.Equal(t, req.Queue.TargetCluster, segment.GetQueue().GetTargetCluster())
 	require.Empty(t, segment.Entries)
 	require.Equal(t, int32(7), segment.GetSourceShardId())
-	require.Equal(t, SegmentBucketID(req.SourceTaskIdentity), segment.GetBucketId())
 	require.Equal(t, []chasm.SearchAttributeKeyValue{
 		categorySearchAttribute.Value(int64(req.Queue.CategoryID)),
 		sourceSearchAttribute.Value(req.Queue.SourceCluster),
@@ -532,13 +531,11 @@ func TestSegmentAppendSparseTaskIDs(t *testing.T) {
 	require.Len(t, segment.Entries, 4)
 }
 
-func TestSegmentBucketMembership(t *testing.T) {
+func TestSegmentMembership(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*Segment, *EnqueueRequest){
-		"queue":           func(_ *Segment, r *EnqueueRequest) { r.Queue.TargetCluster += "-other" },
-		"source shard":    func(_ *Segment, r *EnqueueRequest) { r.SourceTaskIdentity.SourceShardID++ },
-		"producer bucket": func(_ *Segment, r *EnqueueRequest) { r.SourceTaskIdentity.NamespaceID += "-other" },
-		"invalid bucket":  func(s *Segment, _ *EnqueueRequest) { s.BucketId = segmentBucketCount },
+		"queue":        func(_ *Segment, r *EnqueueRequest) { r.Queue.TargetCluster += "-other" },
+		"source shard": func(_ *Segment, r *EnqueueRequest) { r.SourceTaskIdentity.SourceShardID++ },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -566,7 +563,7 @@ func TestSegmentBucketMembership(t *testing.T) {
 	}
 }
 
-func TestSegmentBucketAdmission(t *testing.T) {
+func TestSegmentAdmissionAcrossProducers(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 	ctx := newSegmentContext(&now)
@@ -586,17 +583,17 @@ func TestSegmentBucketAdmission(t *testing.T) {
 	require.ErrorAs(t, err, new(*serviceerror.ResourceExhausted))
 	protorequire.ProtoEqual(t, before, segment.SegmentState)
 	require.Len(t, segment.Entries, 1)
-	collision := second
-	collision.SourceTaskIdentity.NamespaceID = "namespace-0"
-	collision.SourceTaskIdentity.ArchetypeID = 0
-	collision.SourceTaskIdentity.BusinessID = "business-0"
-	require.Equal(t, SegmentBucketID(first.SourceTaskIdentity), SegmentBucketID(collision.SourceTaskIdentity))
-	_, err = segment.Append(ctx, collision)
+	otherProducer := second
+	otherProducer.SourceTaskIdentity.NamespaceID = "namespace-0"
+	otherProducer.SourceTaskIdentity.ArchetypeID = 0
+	otherProducer.SourceTaskIdentity.BusinessID = "business-0"
+	_, err = segment.Append(ctx, otherProducer)
 	require.ErrorAs(t, err, new(*serviceerror.ResourceExhausted))
 	protorequire.ProtoEqual(t, before, segment.SegmentState)
 	independent := second
-	independent.SourceTaskIdentity.NamespaceID += "-other"
-	require.NotEqual(t, SegmentBucketID(first.SourceTaskIdentity), SegmentBucketID(independent.SourceTaskIdentity))
+	independent.SourceTaskIdentity.SourceShardID++
+	independent.Task = proto.Clone(second.Task).(*commonspb.HistoryTask)
+	independent.Task.ShardId = independent.SourceTaskIdentity.SourceShardID
 	otherSegment, err := NewSegment(ctx, independent)
 	require.NoError(t, err)
 	_, err = otherSegment.Append(ctx, independent)
@@ -657,4 +654,37 @@ func newSegmentContext(now *time.Time) *chasm.MockMutableContext {
 			return chasm.ExecutionKey{NamespaceID: primitives.SystemNamespaceID, BusinessID: "segment-business", RunID: "segment-run"}
 		},
 	}}
+}
+
+func TestSegmentEntryIdentityUsesRootShard(t *testing.T) {
+	t.Parallel()
+	for _, shardID := range []int32{7, 42} {
+		t.Run(fmt.Sprint(shardID), func(t *testing.T) {
+			t.Parallel()
+			now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+			ctx := newSegmentContext(&now)
+			req := testEnqueueRequest()
+			req.SourceTaskIdentity.SourceShardID = shardID
+			req.Task.ShardId = shardID
+			segment, err := NewSegment(ctx, req)
+			require.NoError(t, err)
+			result, err := segment.Append(ctx, req)
+			require.NoError(t, err)
+			entry := segment.Entries[result.MessageRef.EntryKey].Get(ctx)
+			require.Nil(t, entry.GetSourceTaskIdentity().ProtoReflect().Descriptor().Fields().ByName("source_shard_id"),
+				"persisted entry identity must not duplicate the segment source shard")
+			stored, err := segment.ReadEntry(ctx, result.MessageRef)
+			require.NoError(t, err)
+			protorequire.ProtoEqual(t, req.Task, stored.Task)
+			stored.Task = nil
+			require.Equal(t, StoredMessage{Ref: result.MessageRef, SourceTaskIdentity: req.SourceTaskIdentity}, stored)
+			entry.Task = chasm.Field[*commonspb.HistoryTask]{}
+			page, err := segment.ListEntries(ctx, ListEntriesRequest{
+				Segment:               SegmentRef{Queue: req.Queue, BusinessID: result.MessageRef.BusinessID, RunID: result.MessageRef.RunID},
+				InclusiveMaxMessageID: math.MaxInt64, PageSize: 1,
+			})
+			require.NoError(t, err)
+			require.Equal(t, EntryPage{Refs: []MessageRef{result.MessageRef}}, page)
+		})
+	}
 }

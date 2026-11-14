@@ -11,9 +11,6 @@ import (
 	commonspb "go.temporal.io/server/api/common/v1"
 )
 
-// Changing the bucket count can create duplicate entries across segment layouts.
-const segmentBucketCount uint32 = 4
-
 type QueueKey struct {
 	CategoryID    int32
 	SourceCluster string
@@ -70,22 +67,14 @@ func identityHash(queue QueueKey, original TaskIdentity) ([sha256.Size]byte, err
 	return sha256.Sum256([]byte(tuple)), nil
 }
 
-// SegmentBucketID returns the producer's stable bucket within a segment pool.
-func SegmentBucketID(source TaskIdentity) uint32 {
-	tuple := fmt.Sprintf("historydlq:producer:v1:%q:%d:%q", source.NamespaceID, source.ArchetypeID, source.BusinessID)
-	hash := sha256.Sum256([]byte(tuple))
-	return uint32(binary.BigEndian.Uint64(hash[:8]) % uint64(segmentBucketCount))
-}
-
-// SegmentBusinessID returns the stable Business ID for the source task's bucketed segment.
+// SegmentBusinessID returns the stable Business ID for a queue and source shard.
 func SegmentBusinessID(queue QueueKey, source TaskIdentity) (string, error) {
 	if err := validateIdentity(queue, source); err != nil {
 		return "", err
 	}
-	bucketID := SegmentBucketID(source)
 	// Quoted strings preserve tuple boundaries, including delimiters and escapes.
-	tuple := fmt.Sprintf("historydlq:segment:v0:%d:%q:%q:%d:%d:%d",
-		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, source.SourceShardID, segmentBucketCount, bucketID)
+	tuple := fmt.Sprintf("historydlq:segment:v0:%d:%q:%q:%d",
+		queue.CategoryID, queue.SourceCluster, queue.TargetCluster, source.SourceShardID)
 	hash := sha256.Sum256([]byte(tuple))
 	return "historydlq:segment:v0:" + hex.EncodeToString(hash[:]), nil
 }

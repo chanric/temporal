@@ -64,9 +64,9 @@ func (s *Segment) entryMetadata(ctx chasm.Context, key string, field chasm.Field
 		return MessageRef{}, serviceerror.NewDataLoss("history DLQ segment entry metadata is missing or invalid")
 	}
 	ref := s.messageReference(ctx, key, entry.EntryState)
-	identity := taskIdentityProtoToIdentity(entry.GetSourceTaskIdentity())
+	identity := entryTaskIdentityProtoToIdentity(entry.GetSourceTaskIdentity(), s.GetSourceShardId())
 	expectedKey, err := EntryKey(ref.Queue, identity)
-	if err != nil || expectedKey != key || identity.SourceShardID != s.GetSourceShardId() || SegmentBucketID(identity) != s.GetBucketId() || validateMessageRef(ref) != nil {
+	if err != nil || expectedKey != key || validateMessageRef(ref) != nil {
 		return MessageRef{}, serviceerror.NewDataLoss("history DLQ segment entry metadata does not match its identity")
 	}
 	return ref, nil

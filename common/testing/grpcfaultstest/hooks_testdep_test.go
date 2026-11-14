@@ -129,3 +129,66 @@ func TestNewCallbackGenerator_UnregisterRemovesHook(t *testing.T) {
 	_, ok = testhooks.Get(testHooks, testhooks.GRPCRequestFaultGeneratorByNamespaceID, namespace.ID("namespace-id"))
 	require.False(t, ok)
 }
+
+func TestClusterWideFaults(t *testing.T) {
+	t.Parallel()
+	for _, stage := range []string{"request", "response"} {
+		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
+			hooks := testhooks.NewTestHooks()
+			generator := grpcfaultstest.NewCallbackGenerator(hooks)
+			injected := errors.New("injected")
+			var unregister func()
+			if stage == "request" {
+				unregister = generator.RegisterRequestCallback(grpcfaults.Scope{}, func(context.Context, string, any) *grpcfaults.Outcome {
+					return &grpcfaults.Outcome{Error: injected}
+				})
+			} else {
+				unregister = generator.RegisterResponseCallback(grpcfaults.Scope{}, func(context.Context, string, any, any, error) *grpcfaults.Outcome {
+					return &grpcfaults.Outcome{Error: injected}
+				})
+			}
+			interceptor := grpcfaults.UnaryServerInterceptor(grpcfaultstest.NewGenerator(hooks))
+			var calls int
+			call := func() (any, error) {
+				return interceptor(t.Context(), "request without a namespace", &grpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+					func(context.Context, any) (any, error) {
+						calls++
+						return "response", nil
+					})
+			}
+			_, err := call()
+			require.ErrorIs(t, err, injected)
+			if stage == "request" {
+				require.Zero(t, calls)
+			} else {
+				require.Equal(t, 1, calls)
+			}
+			unregister()
+			response, err := call()
+			require.NoError(t, err)
+			require.Equal(t, "response", response)
+		})
+	}
+}
+
+func TestNamespaceFaultPrecedesClusterFault(t *testing.T) {
+	t.Parallel()
+	hooks := testhooks.NewTestHooks()
+	generator := grpcfaultstest.NewCallbackGenerator(hooks)
+	clusterError, namespaceError := errors.New("cluster"), errors.New("namespace")
+	t.Cleanup(generator.RegisterRequestCallback(grpcfaults.Scope{}, func(context.Context, string, any) *grpcfaults.Outcome {
+		return &grpcfaults.Outcome{Error: clusterError}
+	}))
+	unregister := generator.RegisterRequestCallback(grpcfaults.Scope{NamespaceID: "namespace-id"},
+		func(context.Context, string, any) *grpcfaults.Outcome {
+			return &grpcfaults.Outcome{Error: namespaceError}
+		})
+	serverGenerator := grpcfaultstest.NewGenerator(hooks)
+	request := &matchingservice.AddWorkflowTaskRequest{NamespaceId: "namespace-id"}
+	outcome := serverGenerator.GenerateRequest(t.Context(), "/test.Service/Method", request)
+	require.ErrorIs(t, outcome.Error, namespaceError)
+	unregister()
+	outcome = serverGenerator.GenerateRequest(t.Context(), "/test.Service/Method", request)
+	require.ErrorIs(t, outcome.Error, clusterError)
+}

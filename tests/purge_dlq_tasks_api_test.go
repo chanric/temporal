@@ -8,6 +8,7 @@ import (
 	sdkclient "go.temporal.io/sdk/client"
 	"go.temporal.io/server/api/adminservice/v1"
 	commonspb "go.temporal.io/server/api/common/v1"
+	"go.temporal.io/server/common/cluster"
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/persistence"
 	"go.temporal.io/server/common/persistence/persistencetest"
@@ -37,10 +38,12 @@ func (s *PurgeDLQTasksSuite) TestPurgeDLQTasks() {
 		apiErr        string
 		workflowErr   string
 		faultCount    *atomic.Int32
+		remainingIDs  []int64
 	}{
 		{
-			name:       "HappyPath",
-			envOptions: []testcore.TestOption{testcore.WithWorkerService("purge DLQ workflow")},
+			name:         "HappyPath",
+			envOptions:   []testcore.TestOption{testcore.WithWorkerService("purge DLQ workflow")},
+			remainingIDs: []int64{persistence.FirstQueueMessageID + 2},
 		},
 		{
 			name: "MissingSourceCluster",
@@ -60,9 +63,19 @@ func (s *PurgeDLQTasksSuite) TestPurgeDLQTasks() {
 			name:       "QueueDoesNotExist",
 			envOptions: []testcore.TestOption{testcore.WithWorkerService("purge DLQ workflow")},
 			mutateRequest: func(request *adminservice.PurgeDLQTasksRequest) {
-				request.DlqKey.TargetCluster = "does-not-exist"
+				request.DlqKey.SourceCluster = "does-not-exist"
 			},
-			workflowErr: "queue not found",
+			remainingIDs: []int64{
+				persistence.FirstQueueMessageID, persistence.FirstQueueMessageID + 1, persistence.FirstQueueMessageID + 2,
+			},
+		},
+		{
+			name:       "NonLocalTargetCluster",
+			envOptions: []testcore.TestOption{testcore.WithWorkerService("purge DLQ workflow")},
+			mutateRequest: func(request *adminservice.PurgeDLQTasksRequest) {
+				request.DlqKey.TargetCluster = "other-cluster"
+			},
+			workflowErr: "requires a local queue",
 		},
 		{
 			name: "DeleteTasksUnavailableError",
@@ -79,12 +92,14 @@ func (s *PurgeDLQTasksSuite) TestPurgeDLQTasks() {
 					testcore.WithMethod("RangeDeleteMessages"),
 				),
 			},
-			faultCount: &deleteTasksFaultCount,
+			faultCount:   &deleteTasksFaultCount,
+			remainingIDs: []int64{persistence.FirstQueueMessageID + 2},
 		},
 	} {
 		s.Run(tc.name, func(s *PurgeDLQTasksSuite) {
 			env := testcore.NewEnv(s.T(), tc.envOptions...)
 			defaultQueueKey := persistencetest.GetQueueKey(s.T())
+			defaultQueueKey.TargetCluster = cluster.TestCurrentClusterName
 
 			queueKey := persistence.QueueKey{
 				QueueType:     persistence.QueueTypeHistoryDLQ,
@@ -144,8 +159,11 @@ func (s *PurgeDLQTasksSuite) TestPurgeDLQTasks() {
 				PageSize: 10,
 			})
 			s.NoError(err)
-			s.Len(readRawTasksResponse.Tasks, 1)
-			s.Equal(int64(persistence.FirstQueueMessageID+2), readRawTasksResponse.Tasks[0].MessageMetadata.ID)
+			var remainingIDs []int64
+			for _, task := range readRawTasksResponse.Tasks {
+				remainingIDs = append(remainingIDs, task.MessageMetadata.ID)
+			}
+			s.Equal(tc.remainingIDs, remainingIDs)
 		})
 	}
 }

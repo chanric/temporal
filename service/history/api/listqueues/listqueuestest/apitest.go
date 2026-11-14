@@ -8,8 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/service/history/api/historydlq"
 	"go.temporal.io/server/service/history/api/listqueues"
+	"go.temporal.io/server/service/history/configs"
 	"go.temporal.io/server/service/history/consts"
 	"go.temporal.io/server/service/history/tasks"
 )
@@ -18,6 +21,9 @@ import (
 // enqueueing a task into the DLQ and then calling [getdlqtasks.Invoke] to verify that the right task is returned.
 func TestInvoke(t *testing.T, manager persistence.HistoryTaskQueueManager) {
 	ctx := context.Background()
+	store := historydlq.NewStore(manager, nil, nil, nil, &configs.Config{
+		TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false),
+	})
 	t.Run("HappyPath", func(t *testing.T) {
 		inTask := &tasks.WorkflowTask{
 			TaskID: 42,
@@ -43,7 +49,7 @@ func TestInvoke(t *testing.T, manager persistence.HistoryTaskQueueManager) {
 		for i := int32(1); ; i++ {
 			res, err := listqueues.Invoke(
 				context.Background(),
-				manager,
+				store,
 				&historyservice.ListQueuesRequest{
 					QueueType:     int32(queueType),
 					PageSize:      i,
@@ -69,7 +75,7 @@ func TestInvoke(t *testing.T, manager persistence.HistoryTaskQueueManager) {
 		queueType := persistence.QueueTypeHistoryDLQ
 		_, err := listqueues.Invoke(
 			context.Background(),
-			manager,
+			store,
 			&historyservice.ListQueuesRequest{
 				QueueType: int32(queueType),
 				PageSize:  0,
@@ -83,7 +89,7 @@ func TestInvoke(t *testing.T, manager persistence.HistoryTaskQueueManager) {
 		queueType := persistence.QueueTypeHistoryDLQ
 		_, err := listqueues.Invoke(
 			context.Background(),
-			manager,
+			store,
 			&historyservice.ListQueuesRequest{
 				QueueType:     int32(queueType),
 				PageSize:      1,

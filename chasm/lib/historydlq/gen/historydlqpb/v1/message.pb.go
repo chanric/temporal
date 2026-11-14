@@ -176,7 +176,7 @@ func (x *TaskIdentity) GetArchetypeId() uint32 {
 	return 0
 }
 
-// SegmentState contains the identity and storage budget of one producer-routed DLQ segment.
+// SegmentState contains the identity and storage budget of one DLQ segment.
 type SegmentState struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Queue whose entries are stored in this segment.
@@ -185,8 +185,6 @@ type SegmentState struct {
 	SourceShardId int32 `protobuf:"varint,2,opt,name=source_shard_id,json=sourceShardId,proto3" json:"source_shard_id,omitempty"`
 	// Conservative retained-byte budget, including metadata and framework reserves.
 	RetainedBytes int64 `protobuf:"varint,4,opt,name=retained_bytes,json=retainedBytes,proto3" json:"retained_bytes,omitempty"`
-	// Producer-hash bucket assigned to this segment.
-	BucketId uint32 `protobuf:"varint,5,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
 	// Smallest pending message ID, or -1 when the segment is empty.
 	MinMessageId  int64 `protobuf:"varint,6,opt,name=min_message_id,json=minMessageId,proto3" json:"min_message_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -244,16 +242,91 @@ func (x *SegmentState) GetRetainedBytes() int64 {
 	return 0
 }
 
-func (x *SegmentState) GetBucketId() uint32 {
+func (x *SegmentState) GetMinMessageId() int64 {
 	if x != nil {
-		return x.BucketId
+		return x.MinMessageId
 	}
 	return 0
 }
 
-func (x *SegmentState) GetMinMessageId() int64 {
+// EntryTaskIdentity identifies an original task within its segment.
+type EntryTaskIdentity struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID assigned when the original task was persisted.
+	TaskId int64 `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// Original execution namespace.
+	NamespaceId string `protobuf:"bytes,2,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
+	// Original execution Business ID (Workflow ID for workflows).
+	BusinessId string `protobuf:"bytes,3,opt,name=business_id,json=businessId,proto3" json:"business_id,omitempty"`
+	// Original execution Run ID.
+	RunId string `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	// Original execution archetype; zero is permitted for workflow tasks.
+	ArchetypeId   uint32 `protobuf:"varint,5,opt,name=archetype_id,json=archetypeId,proto3" json:"archetype_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EntryTaskIdentity) Reset() {
+	*x = EntryTaskIdentity{}
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EntryTaskIdentity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EntryTaskIdentity) ProtoMessage() {}
+
+func (x *EntryTaskIdentity) ProtoReflect() protoreflect.Message {
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[2]
 	if x != nil {
-		return x.MinMessageId
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EntryTaskIdentity.ProtoReflect.Descriptor instead.
+func (*EntryTaskIdentity) Descriptor() ([]byte, []int) {
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *EntryTaskIdentity) GetTaskId() int64 {
+	if x != nil {
+		return x.TaskId
+	}
+	return 0
+}
+
+func (x *EntryTaskIdentity) GetNamespaceId() string {
+	if x != nil {
+		return x.NamespaceId
+	}
+	return ""
+}
+
+func (x *EntryTaskIdentity) GetBusinessId() string {
+	if x != nil {
+		return x.BusinessId
+	}
+	return ""
+}
+
+func (x *EntryTaskIdentity) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *EntryTaskIdentity) GetArchetypeId() uint32 {
+	if x != nil {
+		return x.ArchetypeId
 	}
 	return 0
 }
@@ -262,7 +335,7 @@ func (x *SegmentState) GetMinMessageId() int64 {
 type EntryState struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Identity of the persisted task that this entry represents.
-	SourceTaskIdentity *TaskIdentity `protobuf:"bytes,1,opt,name=source_task_identity,json=sourceTaskIdentity,proto3" json:"source_task_identity,omitempty"`
+	SourceTaskIdentity *EntryTaskIdentity `protobuf:"bytes,1,opt,name=source_task_identity,json=sourceTaskIdentity,proto3" json:"source_task_identity,omitempty"`
 	// Server-assigned numeric bound for operator requests; collisions are allowed.
 	MessageId int64 `protobuf:"varint,2,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	// Server time assigned once when the entry is accepted.
@@ -275,7 +348,7 @@ type EntryState struct {
 
 func (x *EntryState) Reset() {
 	*x = EntryState{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[2]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -287,7 +360,7 @@ func (x *EntryState) String() string {
 func (*EntryState) ProtoMessage() {}
 
 func (x *EntryState) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[2]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -300,10 +373,10 @@ func (x *EntryState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntryState.ProtoReflect.Descriptor instead.
 func (*EntryState) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{2}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *EntryState) GetSourceTaskIdentity() *TaskIdentity {
+func (x *EntryState) GetSourceTaskIdentity() *EntryTaskIdentity {
 	if x != nil {
 		return x.SourceTaskIdentity
 	}
@@ -334,7 +407,7 @@ func (x *EntryState) GetPayloadSizeBytes() int64 {
 // MessageRef addresses one exact entry in a CHASM DLQ segment.
 type MessageRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Stable segment Business ID derived from queue, source shard, and producer bucket.
+	// Stable segment Business ID derived from queue and source shard.
 	BusinessId string `protobuf:"bytes,2,opt,name=business_id,json=businessId,proto3" json:"business_id,omitempty"`
 	// Exact accepted segment run, required for reads and resolution.
 	RunId string `protobuf:"bytes,3,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -352,7 +425,7 @@ type MessageRef struct {
 
 func (x *MessageRef) Reset() {
 	*x = MessageRef{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[3]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -364,7 +437,7 @@ func (x *MessageRef) String() string {
 func (*MessageRef) ProtoMessage() {}
 
 func (x *MessageRef) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[3]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -377,7 +450,7 @@ func (x *MessageRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageRef.ProtoReflect.Descriptor instead.
 func (*MessageRef) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{3}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *MessageRef) GetBusinessId() string {
@@ -437,7 +510,7 @@ type StoredMessage struct {
 
 func (x *StoredMessage) Reset() {
 	*x = StoredMessage{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[4]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +522,7 @@ func (x *StoredMessage) String() string {
 func (*StoredMessage) ProtoMessage() {}
 
 func (x *StoredMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[4]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +535,7 @@ func (x *StoredMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoredMessage.ProtoReflect.Descriptor instead.
 func (*StoredMessage) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{4}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *StoredMessage) GetRef() *MessageRef {
@@ -490,7 +563,7 @@ type EnqueueRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Routing namespace, always the cluster-local temporal-system ID.
 	SystemNamespaceId string `protobuf:"bytes,1,opt,name=system_namespace_id,json=systemNamespaceId,proto3" json:"system_namespace_id,omitempty"`
-	// Routing Business ID derived from the queue, source shard, and producer bucket.
+	// Routing Business ID derived from the queue and source shard.
 	BusinessId string `protobuf:"bytes,2,opt,name=business_id,json=businessId,proto3" json:"business_id,omitempty"`
 	// Queue containing this failed task.
 	Queue *v1.HistoryDLQKey `protobuf:"bytes,3,opt,name=queue,proto3" json:"queue,omitempty"`
@@ -504,7 +577,7 @@ type EnqueueRequest struct {
 
 func (x *EnqueueRequest) Reset() {
 	*x = EnqueueRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[5]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -516,7 +589,7 @@ func (x *EnqueueRequest) String() string {
 func (*EnqueueRequest) ProtoMessage() {}
 
 func (x *EnqueueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[5]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -529,7 +602,7 @@ func (x *EnqueueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnqueueRequest.ProtoReflect.Descriptor instead.
 func (*EnqueueRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{5}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EnqueueRequest) GetSystemNamespaceId() string {
@@ -577,7 +650,7 @@ type EnqueueResponse struct {
 
 func (x *EnqueueResponse) Reset() {
 	*x = EnqueueResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[6]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +662,7 @@ func (x *EnqueueResponse) String() string {
 func (*EnqueueResponse) ProtoMessage() {}
 
 func (x *EnqueueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[6]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +675,7 @@ func (x *EnqueueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnqueueResponse.ProtoReflect.Descriptor instead.
 func (*EnqueueResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{6}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *EnqueueResponse) GetRef() *MessageRef {
@@ -624,7 +697,7 @@ type ReadMessageRequest struct {
 
 func (x *ReadMessageRequest) Reset() {
 	*x = ReadMessageRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[7]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +709,7 @@ func (x *ReadMessageRequest) String() string {
 func (*ReadMessageRequest) ProtoMessage() {}
 
 func (x *ReadMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[7]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +722,7 @@ func (x *ReadMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadMessageRequest.ProtoReflect.Descriptor instead.
 func (*ReadMessageRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{7}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ReadMessageRequest) GetSystemNamespaceId() string {
@@ -676,7 +749,7 @@ type ReadMessageResponse struct {
 
 func (x *ReadMessageResponse) Reset() {
 	*x = ReadMessageResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[8]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +761,7 @@ func (x *ReadMessageResponse) String() string {
 func (*ReadMessageResponse) ProtoMessage() {}
 
 func (x *ReadMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[8]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +774,7 @@ func (x *ReadMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadMessageResponse.ProtoReflect.Descriptor instead.
 func (*ReadMessageResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{8}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReadMessageResponse) GetMessage() *StoredMessage {
@@ -726,7 +799,7 @@ type ResolveRequest struct {
 
 func (x *ResolveRequest) Reset() {
 	*x = ResolveRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[9]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -738,7 +811,7 @@ func (x *ResolveRequest) String() string {
 func (*ResolveRequest) ProtoMessage() {}
 
 func (x *ResolveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[9]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -751,7 +824,7 @@ func (x *ResolveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveRequest.ProtoReflect.Descriptor instead.
 func (*ResolveRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{9}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ResolveRequest) GetRef() *MessageRef {
@@ -783,7 +856,7 @@ type ResolveResponse struct {
 
 func (x *ResolveResponse) Reset() {
 	*x = ResolveResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[10]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -795,7 +868,7 @@ func (x *ResolveResponse) String() string {
 func (*ResolveResponse) ProtoMessage() {}
 
 func (x *ResolveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[10]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -808,7 +881,7 @@ func (x *ResolveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveResponse.ProtoReflect.Descriptor instead.
 func (*ResolveResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{10}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{11}
 }
 
 // SegmentRef addresses one exact segment run in a logical queue.
@@ -826,7 +899,7 @@ type SegmentRef struct {
 
 func (x *SegmentRef) Reset() {
 	*x = SegmentRef{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[11]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -838,7 +911,7 @@ func (x *SegmentRef) String() string {
 func (*SegmentRef) ProtoMessage() {}
 
 func (x *SegmentRef) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[11]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -851,7 +924,7 @@ func (x *SegmentRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SegmentRef.ProtoReflect.Descriptor instead.
 func (*SegmentRef) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{11}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SegmentRef) GetQueue() *v1.HistoryDLQKey {
@@ -893,7 +966,7 @@ type ListEntriesRequest struct {
 
 func (x *ListEntriesRequest) Reset() {
 	*x = ListEntriesRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[12]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +978,7 @@ func (x *ListEntriesRequest) String() string {
 func (*ListEntriesRequest) ProtoMessage() {}
 
 func (x *ListEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[12]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +991,7 @@ func (x *ListEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ListEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{12}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListEntriesRequest) GetSystemNamespaceId() string {
@@ -968,7 +1041,7 @@ type ListEntriesResponse struct {
 
 func (x *ListEntriesResponse) Reset() {
 	*x = ListEntriesResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[13]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -980,7 +1053,7 @@ func (x *ListEntriesResponse) String() string {
 func (*ListEntriesResponse) ProtoMessage() {}
 
 func (x *ListEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[13]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -993,7 +1066,7 @@ func (x *ListEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntriesResponse.ProtoReflect.Descriptor instead.
 func (*ListEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{13}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListEntriesResponse) GetRefs() []*MessageRef {
@@ -1022,7 +1095,7 @@ type DescribeSegmentRequest struct {
 
 func (x *DescribeSegmentRequest) Reset() {
 	*x = DescribeSegmentRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[14]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1034,7 +1107,7 @@ func (x *DescribeSegmentRequest) String() string {
 func (*DescribeSegmentRequest) ProtoMessage() {}
 
 func (x *DescribeSegmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[14]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1047,7 +1120,7 @@ func (x *DescribeSegmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeSegmentRequest.ProtoReflect.Descriptor instead.
 func (*DescribeSegmentRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{14}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DescribeSegmentRequest) GetSystemNamespaceId() string {
@@ -1076,7 +1149,7 @@ type DescribeSegmentResponse struct {
 
 func (x *DescribeSegmentResponse) Reset() {
 	*x = DescribeSegmentResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[15]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1088,7 +1161,7 @@ func (x *DescribeSegmentResponse) String() string {
 func (*DescribeSegmentResponse) ProtoMessage() {}
 
 func (x *DescribeSegmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[15]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1101,7 +1174,7 @@ func (x *DescribeSegmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeSegmentResponse.ProtoReflect.Descriptor instead.
 func (*DescribeSegmentResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{15}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DescribeSegmentResponse) GetPendingCount() int64 {
@@ -1136,7 +1209,7 @@ type ReadSegmentMessagesRequest struct {
 
 func (x *ReadSegmentMessagesRequest) Reset() {
 	*x = ReadSegmentMessagesRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[16]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1148,7 +1221,7 @@ func (x *ReadSegmentMessagesRequest) String() string {
 func (*ReadSegmentMessagesRequest) ProtoMessage() {}
 
 func (x *ReadSegmentMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[16]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1161,7 +1234,7 @@ func (x *ReadSegmentMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadSegmentMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ReadSegmentMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{16}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ReadSegmentMessagesRequest) GetSystemNamespaceId() string {
@@ -1211,7 +1284,7 @@ type ReadSegmentMessagesResponse struct {
 
 func (x *ReadSegmentMessagesResponse) Reset() {
 	*x = ReadSegmentMessagesResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[17]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1296,7 @@ func (x *ReadSegmentMessagesResponse) String() string {
 func (*ReadSegmentMessagesResponse) ProtoMessage() {}
 
 func (x *ReadSegmentMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[17]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1309,7 @@ func (x *ReadSegmentMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadSegmentMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ReadSegmentMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{17}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReadSegmentMessagesResponse) GetMessages() []*StoredMessage {
@@ -1270,7 +1343,7 @@ type ResolveEntriesRequest struct {
 
 func (x *ResolveEntriesRequest) Reset() {
 	*x = ResolveEntriesRequest{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[18]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1282,7 +1355,7 @@ func (x *ResolveEntriesRequest) String() string {
 func (*ResolveEntriesRequest) ProtoMessage() {}
 
 func (x *ResolveEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[18]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1295,7 +1368,7 @@ func (x *ResolveEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ResolveEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{18}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ResolveEntriesRequest) GetSystemNamespaceId() string {
@@ -1335,7 +1408,7 @@ type ResolveEntriesResponse struct {
 
 func (x *ResolveEntriesResponse) Reset() {
 	*x = ResolveEntriesResponse{}
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[19]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1347,7 +1420,7 @@ func (x *ResolveEntriesResponse) String() string {
 func (*ResolveEntriesResponse) ProtoMessage() {}
 
 func (x *ResolveEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[19]
+	mi := &file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1360,7 +1433,7 @@ func (x *ResolveEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveEntriesResponse.ProtoReflect.Descriptor instead.
 func (*ResolveEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{19}
+	return file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZIP(), []int{20}
 }
 
 var File_temporal_server_chasm_lib_historydlq_proto_v1_message_proto protoreflect.FileDescriptor
@@ -1375,16 +1448,22 @@ const file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDesc =
 	"\vbusiness_id\x18\x04 \x01(\tR\n" +
 	"businessId\x12\x15\n" +
 	"\x06run_id\x18\x05 \x01(\tR\x05runId\x12!\n" +
-	"\farchetype_id\x18\x06 \x01(\rR\varchetypeId\"\xe4\x01\n" +
+	"\farchetype_id\x18\x06 \x01(\rR\varchetypeId\"\xc7\x01\n" +
 	"\fSegmentState\x12B\n" +
 	"\x05queue\x18\x01 \x01(\v2,.temporal.server.api.common.v1.HistoryDLQKeyR\x05queue\x12&\n" +
 	"\x0fsource_shard_id\x18\x02 \x01(\x05R\rsourceShardId\x12%\n" +
-	"\x0eretained_bytes\x18\x04 \x01(\x03R\rretainedBytes\x12\x1b\n" +
-	"\tbucket_id\x18\x05 \x01(\rR\bbucketId\x12$\n" +
-	"\x0emin_message_id\x18\x06 \x01(\x03R\fminMessageId\"\x85\x02\n" +
+	"\x0eretained_bytes\x18\x04 \x01(\x03R\rretainedBytes\x12$\n" +
+	"\x0emin_message_id\x18\x06 \x01(\x03R\fminMessageId\"\xaa\x01\n" +
+	"\x11EntryTaskIdentity\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\x03R\x06taskId\x12!\n" +
+	"\fnamespace_id\x18\x02 \x01(\tR\vnamespaceId\x12\x1f\n" +
+	"\vbusiness_id\x18\x03 \x01(\tR\n" +
+	"businessId\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x12!\n" +
+	"\farchetype_id\x18\x05 \x01(\rR\varchetypeId\"\x8a\x02\n" +
 	"\n" +
-	"EntryState\x12m\n" +
-	"\x14source_task_identity\x18\x01 \x01(\v2;.temporal.server.chasm.lib.historydlq.proto.v1.TaskIdentityR\x12sourceTaskIdentity\x12\x1d\n" +
+	"EntryState\x12r\n" +
+	"\x14source_task_identity\x18\x01 \x01(\v2@.temporal.server.chasm.lib.historydlq.proto.v1.EntryTaskIdentityR\x12sourceTaskIdentity\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x02 \x01(\x03R\tmessageId\x12;\n" +
 	"\venqueued_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -1484,57 +1563,58 @@ func file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDescGZI
 }
 
 var file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_goTypes = []any{
 	(Resolution)(0),                     // 0: temporal.server.chasm.lib.historydlq.proto.v1.Resolution
 	(*TaskIdentity)(nil),                // 1: temporal.server.chasm.lib.historydlq.proto.v1.TaskIdentity
 	(*SegmentState)(nil),                // 2: temporal.server.chasm.lib.historydlq.proto.v1.SegmentState
-	(*EntryState)(nil),                  // 3: temporal.server.chasm.lib.historydlq.proto.v1.EntryState
-	(*MessageRef)(nil),                  // 4: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
-	(*StoredMessage)(nil),               // 5: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
-	(*EnqueueRequest)(nil),              // 6: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest
-	(*EnqueueResponse)(nil),             // 7: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
-	(*ReadMessageRequest)(nil),          // 8: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageRequest
-	(*ReadMessageResponse)(nil),         // 9: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
-	(*ResolveRequest)(nil),              // 10: temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest
-	(*ResolveResponse)(nil),             // 11: temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
-	(*SegmentRef)(nil),                  // 12: temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
-	(*ListEntriesRequest)(nil),          // 13: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest
-	(*ListEntriesResponse)(nil),         // 14: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
-	(*DescribeSegmentRequest)(nil),      // 15: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest
-	(*DescribeSegmentResponse)(nil),     // 16: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
-	(*ReadSegmentMessagesRequest)(nil),  // 17: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest
-	(*ReadSegmentMessagesResponse)(nil), // 18: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
-	(*ResolveEntriesRequest)(nil),       // 19: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest
-	(*ResolveEntriesResponse)(nil),      // 20: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesResponse
-	(*v1.HistoryDLQKey)(nil),            // 21: temporal.server.api.common.v1.HistoryDLQKey
-	(*timestamppb.Timestamp)(nil),       // 22: google.protobuf.Timestamp
-	(*v1.HistoryTask)(nil),              // 23: temporal.server.api.common.v1.HistoryTask
+	(*EntryTaskIdentity)(nil),           // 3: temporal.server.chasm.lib.historydlq.proto.v1.EntryTaskIdentity
+	(*EntryState)(nil),                  // 4: temporal.server.chasm.lib.historydlq.proto.v1.EntryState
+	(*MessageRef)(nil),                  // 5: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	(*StoredMessage)(nil),               // 6: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
+	(*EnqueueRequest)(nil),              // 7: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest
+	(*EnqueueResponse)(nil),             // 8: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse
+	(*ReadMessageRequest)(nil),          // 9: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageRequest
+	(*ReadMessageResponse)(nil),         // 10: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse
+	(*ResolveRequest)(nil),              // 11: temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest
+	(*ResolveResponse)(nil),             // 12: temporal.server.chasm.lib.historydlq.proto.v1.ResolveResponse
+	(*SegmentRef)(nil),                  // 13: temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
+	(*ListEntriesRequest)(nil),          // 14: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest
+	(*ListEntriesResponse)(nil),         // 15: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse
+	(*DescribeSegmentRequest)(nil),      // 16: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest
+	(*DescribeSegmentResponse)(nil),     // 17: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentResponse
+	(*ReadSegmentMessagesRequest)(nil),  // 18: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest
+	(*ReadSegmentMessagesResponse)(nil), // 19: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse
+	(*ResolveEntriesRequest)(nil),       // 20: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest
+	(*ResolveEntriesResponse)(nil),      // 21: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesResponse
+	(*v1.HistoryDLQKey)(nil),            // 22: temporal.server.api.common.v1.HistoryDLQKey
+	(*timestamppb.Timestamp)(nil),       // 23: google.protobuf.Timestamp
+	(*v1.HistoryTask)(nil),              // 24: temporal.server.api.common.v1.HistoryTask
 }
 var file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_depIdxs = []int32{
-	21, // 0: temporal.server.chasm.lib.historydlq.proto.v1.SegmentState.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
-	1,  // 1: temporal.server.chasm.lib.historydlq.proto.v1.EntryState.source_task_identity:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.TaskIdentity
-	22, // 2: temporal.server.chasm.lib.historydlq.proto.v1.EntryState.enqueued_at:type_name -> google.protobuf.Timestamp
-	21, // 3: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
-	22, // 4: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef.enqueued_at:type_name -> google.protobuf.Timestamp
-	4,  // 5: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	22, // 0: temporal.server.chasm.lib.historydlq.proto.v1.SegmentState.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
+	3,  // 1: temporal.server.chasm.lib.historydlq.proto.v1.EntryState.source_task_identity:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.EntryTaskIdentity
+	23, // 2: temporal.server.chasm.lib.historydlq.proto.v1.EntryState.enqueued_at:type_name -> google.protobuf.Timestamp
+	22, // 3: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
+	23, // 4: temporal.server.chasm.lib.historydlq.proto.v1.MessageRef.enqueued_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
 	1,  // 6: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage.source_task_identity:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.TaskIdentity
-	23, // 7: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage.task:type_name -> temporal.server.api.common.v1.HistoryTask
-	21, // 8: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
+	24, // 7: temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage.task:type_name -> temporal.server.api.common.v1.HistoryTask
+	22, // 8: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
 	1,  // 9: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest.source_task_identity:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.TaskIdentity
-	23, // 10: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest.task:type_name -> temporal.server.api.common.v1.HistoryTask
-	4,  // 11: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
-	4,  // 12: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageRequest.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
-	5,  // 13: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse.message:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
-	4,  // 14: temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	24, // 10: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueRequest.task:type_name -> temporal.server.api.common.v1.HistoryTask
+	5,  // 11: temporal.server.chasm.lib.historydlq.proto.v1.EnqueueResponse.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	5,  // 12: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageRequest.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	6,  // 13: temporal.server.chasm.lib.historydlq.proto.v1.ReadMessageResponse.message:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
+	5,  // 14: temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest.ref:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
 	0,  // 15: temporal.server.chasm.lib.historydlq.proto.v1.ResolveRequest.resolution:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.Resolution
-	21, // 16: temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
-	12, // 17: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
-	4,  // 18: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse.refs:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
-	12, // 19: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
-	12, // 20: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
-	5,  // 21: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse.messages:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
-	12, // 22: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
+	22, // 16: temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef.queue:type_name -> temporal.server.api.common.v1.HistoryDLQKey
+	13, // 17: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
+	5,  // 18: temporal.server.chasm.lib.historydlq.proto.v1.ListEntriesResponse.refs:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.MessageRef
+	13, // 19: temporal.server.chasm.lib.historydlq.proto.v1.DescribeSegmentRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
+	13, // 20: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
+	6,  // 21: temporal.server.chasm.lib.historydlq.proto.v1.ReadSegmentMessagesResponse.messages:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.StoredMessage
+	13, // 22: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest.segment:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.SegmentRef
 	0,  // 23: temporal.server.chasm.lib.historydlq.proto.v1.ResolveEntriesRequest.resolution:type_name -> temporal.server.chasm.lib.historydlq.proto.v1.Resolution
 	24, // [24:24] is the sub-list for method output_type
 	24, // [24:24] is the sub-list for method input_type
@@ -1554,7 +1634,7 @@ func file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDesc), len(file_temporal_server_chasm_lib_historydlq_proto_v1_message_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

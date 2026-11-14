@@ -210,7 +210,7 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 		require.NoError(t, err)
 		protorequire.ProtoEqual(t, &historyservice.GetDLQTasksResponse{DlqTasks: []*commonspb.HistoryDLQTask{legacyTask}, NextPageToken: raw.NextPageToken}, legacy)
 	})
-	t.Run("ProducerBuckets", func(t *testing.T) {
+	t.Run("ProducersShareSegment", func(t *testing.T) {
 		t.Parallel()
 		env := newHistoryDLQTestEnvironment(t)
 		rpc := env.GetTestCluster().Host().HistoryDLQClient()
@@ -250,7 +250,7 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 			entries[ref.EntryKey] = struct{}{}
 			accepted = append(accepted, result)
 		}
-		require.Len(t, segments, 4)
+		require.Len(t, segments, 1)
 		for businessID := range segments {
 			env.CloseShard(primitives.SystemNamespaceID, businessID)
 		}
@@ -266,6 +266,137 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 				Ref: retry.Ref, SourceTaskIdentity: result.req.SourceTaskIdentity,
 				Task: result.req.Task,
 			}, read.Message)
+		}
+	})
+	t.Run("MissingProducerMetadata", func(t *testing.T) {
+		t.Parallel()
+		env := newHistoryDLQTestEnvironment(t)
+		rpc := env.GetTestCluster().Host().HistoryDLQClient()
+		var segment *historydlqpb.SegmentRef
+		var previousEntryKey string
+		for _, taskID := range []int64{123, 1 << 40} {
+			request := newHistoryDLQProducerEnqueueRequest(t, env, taskID, 1024, historydlq.TaskIdentity{})
+			protorequire.ProtoEqual(t, &historydlqpb.TaskIdentity{SourceShardId: 7, TaskId: taskID}, request.SourceTaskIdentity)
+			hostingShardID := common.WorkflowIDToHistoryShard(
+				primitives.SystemNamespaceID, request.BusinessId, env.GetTestClusterConfig().HistoryConfig.NumHistoryShards,
+			)
+			require.NotEqual(t, request.SourceTaskIdentity.SourceShardId, hostingShardID)
+			accepted, err := rpc.Enqueue(t.Context(), request)
+			require.NoError(t, err)
+			if segment == nil {
+				segment = &historydlqpb.SegmentRef{
+					Queue:      request.Queue,
+					BusinessId: accepted.Ref.BusinessId,
+					RunId:      accepted.Ref.RunId,
+				}
+			} else {
+				require.Equal(t, segment.BusinessId, accepted.Ref.BusinessId)
+				require.Equal(t, segment.RunId, accepted.Ref.RunId)
+				require.NotEqual(t, previousEntryKey, accepted.Ref.EntryKey)
+			}
+			previousEntryKey = accepted.Ref.EntryKey
+			env.CloseShard(primitives.SystemNamespaceID, request.BusinessId)
+			retry, err := rpc.Enqueue(t.Context(), request)
+			require.NoError(t, err)
+			protorequire.ProtoEqual(t, accepted, retry)
+			read, err := rpc.ReadMessage(t.Context(), &historydlqpb.ReadMessageRequest{
+				SystemNamespaceId: primitives.SystemNamespaceID, Ref: accepted.Ref,
+			})
+			require.NoError(t, err)
+			protorequire.ProtoEqual(t, &historydlqpb.StoredMessage{
+				Ref:                accepted.Ref,
+				SourceTaskIdentity: request.SourceTaskIdentity,
+				Task:               request.Task,
+			}, read.Message)
+		}
+		stats, err := rpc.DescribeSegment(t.Context(), &historydlqpb.DescribeSegmentRequest{
+			SystemNamespaceId: primitives.SystemNamespaceID, Segment: segment,
+		})
+		require.NoError(t, err)
+		require.Equal(t, int64(2), stats.PendingCount)
+	})
+	t.Run("ExactSegmentRun", func(t *testing.T) {
+		t.Parallel()
+		env := newHistoryDLQTestEnvironment(t)
+		rpc := env.GetTestCluster().Host().HistoryDLQClient()
+		request := newHistoryDLQEnqueueRequest(t, env, 123, 1024)
+		accepted, err := rpc.Enqueue(t.Context(), request)
+		require.NoError(t, err)
+		wrongRef := common.CloneProto(accepted.Ref)
+		wrongRef.RunId = primitives.NewUUID().String()
+		wrongSegment := &historydlqpb.SegmentRef{
+			Queue:      request.Queue,
+			BusinessId: accepted.Ref.BusinessId,
+			RunId:      wrongRef.RunId,
+		}
+		env.CloseShard(primitives.SystemNamespaceID, request.BusinessId)
+		for _, tc := range []struct {
+			name   string
+			invoke func(context.Context) error
+		}{
+			{"ReadMessage", func(ctx context.Context) error {
+				_, err := rpc.ReadMessage(ctx, &historydlqpb.ReadMessageRequest{
+					SystemNamespaceId: primitives.SystemNamespaceID,
+					Ref:               wrongRef,
+				})
+				return err
+			}},
+			{"ListEntries", func(ctx context.Context) error {
+				_, err := rpc.ListEntries(ctx, &historydlqpb.ListEntriesRequest{
+					SystemNamespaceId:     primitives.SystemNamespaceID,
+					Segment:               wrongSegment,
+					InclusiveMaxMessageId: math.MaxInt64,
+					PageSize:              1,
+				})
+				return err
+			}},
+			{"ReadSegmentMessages", func(ctx context.Context) error {
+				_, err := rpc.ReadSegmentMessages(ctx, &historydlqpb.ReadSegmentMessagesRequest{
+					SystemNamespaceId:     primitives.SystemNamespaceID,
+					Segment:               wrongSegment,
+					InclusiveMaxMessageId: math.MaxInt64,
+					PageSize:              1,
+				})
+				return err
+			}},
+			{"DescribeSegment", func(ctx context.Context) error {
+				_, err := rpc.DescribeSegment(ctx, &historydlqpb.DescribeSegmentRequest{
+					SystemNamespaceId: primitives.SystemNamespaceID,
+					Segment:           wrongSegment,
+				})
+				return err
+			}},
+			{"Resolve", func(ctx context.Context) error {
+				_, err := rpc.Resolve(ctx, &historydlqpb.ResolveRequest{
+					SystemNamespaceId: primitives.SystemNamespaceID,
+					Ref:               wrongRef,
+					Resolution:        historydlqpb.RESOLUTION_PURGED,
+				})
+				return err
+			}},
+			{"ResolveEntries", func(ctx context.Context) error {
+				_, err := rpc.ResolveEntries(ctx, &historydlqpb.ResolveEntriesRequest{
+					SystemNamespaceId: primitives.SystemNamespaceID,
+					Segment:           wrongSegment,
+					EntryKeys:         []string{accepted.Ref.EntryKey},
+					Resolution:        historydlqpb.RESOLUTION_PURGED,
+				})
+				return err
+			}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				require.ErrorAs(t, tc.invoke(t.Context()), new(*serviceerror.NotFound))
+				read, err := rpc.ReadMessage(t.Context(), &historydlqpb.ReadMessageRequest{
+					SystemNamespaceId: primitives.SystemNamespaceID, Ref: accepted.Ref,
+				})
+				require.NoError(t, err)
+				protorequire.ProtoEqual(t, &historydlqpb.StoredMessage{
+					Ref:                accepted.Ref,
+					SourceTaskIdentity: request.SourceTaskIdentity,
+					Task:               request.Task,
+				}, read.Message)
+			})
 		}
 	})
 	t.Run("DurableEnqueue", func(t *testing.T) {
@@ -722,11 +853,13 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 	})
 	t.Run("NumericCollision", func(t *testing.T) {
 		t.Parallel()
-		env := newHistoryDLQTestEnvironment(t)
+		env := newHistoryDLQTestEnvironment(t, testcore.WithDynamicConfig(dynamicconfig.HistoryTaskDLQReadCHASM, true))
 		rpc := env.GetTestCluster().Host().HistoryDLQClient()
 		engineCtx, err := env.GetTestCluster().Host().ChasmContext(t.Context())
 		require.NoError(t, err)
 		var refs []*historydlqpb.MessageRef
+		var queue *commonspb.HistoryDLQKey
+		var want []*commonspb.HistoryDLQTask
 		for _, id := range []int64{123, 124} {
 			req := newHistoryDLQEnqueueRequest(t, env, id, 1024)
 			input := historydlq.EnqueueRequest{
@@ -761,7 +894,11 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 					if err != nil {
 						return struct{}{}, err
 					}
-					s.Entries[ref.MessageRef.EntryKey].Get(ctx).MessageId = 42
+					entry := s.Entries[ref.MessageRef.EntryKey].Get(ctx)
+					before := proto.Size(entry.EntryState)
+					entry.MessageId = 0
+					s.RetainedBytes += int64(proto.Size(entry.EntryState) - before)
+					s.MinMessageId = 0
 					return struct{}{}, nil
 				},
 				input,
@@ -770,10 +907,58 @@ func TestHistoryDLQCHASMSuite(t *testing.T) {
 			response, err := rpc.Enqueue(t.Context(), req)
 			require.NoError(t, err)
 			refs = append(refs, response.Ref)
+			queue = req.Queue
+			want = append(want, &commonspb.HistoryDLQTask{
+				Metadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 0}, Payload: req.Task,
+			})
 		}
 		require.Equal(t, refs[0].RunId, refs[1].RunId)
 		require.Equal(t, refs[0].MessageId, refs[1].MessageId)
 		require.NotEqual(t, refs[0].EntryKey, refs[1].EntryKey)
+		manager, err := env.GetTestCluster().TestBase().Factory.NewHistoryTaskQueueManager()
+		require.NoError(t, err)
+		t.Cleanup(manager.Close)
+		legacyKey := persistence.QueueKey{
+			QueueType: persistence.QueueTypeHistoryDLQ, Category: tasks.CategoryReplication,
+			SourceCluster: queue.SourceCluster, TargetCluster: queue.TargetCluster,
+		}
+		_, err = manager.CreateQueue(t.Context(), &persistence.CreateQueueRequest{QueueKey: legacyKey})
+		require.NoError(t, err)
+		task, err := serialization.NewSerializer().DeserializeTask(tasks.CategoryReplication, want[0].Payload.Blob)
+		require.NoError(t, err)
+		_, err = manager.EnqueueTask(t.Context(), &persistence.EnqueueTaskRequest{
+			QueueType: persistence.QueueTypeHistoryDLQ, SourceCluster: queue.SourceCluster, TargetCluster: queue.TargetCluster,
+			SourceShardID: 9, Task: task,
+		})
+		require.NoError(t, err)
+		want = append(want, &commonspb.HistoryDLQTask{
+			Metadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 0},
+			Payload:  &commonspb.HistoryTask{ShardId: 9, Blob: want[0].Payload.Blob},
+		})
+		bound := &commonspb.HistoryDLQTaskMetadata{MessageId: 0}
+		await.Require(t.Context(), t, func(t *await.T) {
+			page, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{
+				DlqKey: queue, PageSize: 10, InclusiveMaxTaskMetadata: bound,
+			})
+			require.NoError(t, err)
+			protorequire.ProtoElementsMatch(t, want, page.DlqTasks)
+		}, 15*time.Second, 50*time.Millisecond)
+		var got []*commonspb.HistoryDLQTask
+		var token []byte
+		for i := 0; ; i++ {
+			require.Less(t, i, 4)
+			page, err := env.AdminClient().GetDLQTasks(t.Context(), &adminservice.GetDLQTasksRequest{
+				DlqKey: queue, PageSize: 1, InclusiveMaxTaskMetadata: bound, NextPageToken: token,
+			})
+			require.NoError(t, err)
+			require.Len(t, page.DlqTasks, 1)
+			got = append(got, page.DlqTasks...)
+			token = page.NextPageToken
+			if len(token) == 0 {
+				break
+			}
+		}
+		protorequire.ProtoElementsMatch(t, want, got)
 		_, err = rpc.Resolve(t.Context(), &historydlqpb.ResolveRequest{
 			SystemNamespaceId: primitives.SystemNamespaceID,
 			Ref:               refs[0],

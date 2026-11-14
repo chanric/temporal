@@ -2289,6 +2289,7 @@ func (adh *AdminHandler) ListQueues(
 		QueueType:     request.QueueType,
 		PageSize:      request.PageSize,
 		NextPageToken: request.NextPageToken,
+		IncludeChasm:  persistence.QueueV2Type(request.QueueType) == persistence.QueueTypeHistoryDLQ,
 	}
 	resp, err := adh.historyClient.ListQueues(ctx, historyServiceRequest)
 	if err != nil {

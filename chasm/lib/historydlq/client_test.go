@@ -281,13 +281,13 @@ func TestRPCRoutingDescriptors(t *testing.T) {
 func TestClientStoredEntryValidation(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*historydlqpb.StoredMessage){
-		"missing identity":          func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity = nil },
-		"different entry":           func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity.TaskId++ },
-		"different producer bucket": func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity.NamespaceId += "-other" },
-		"wrong shard":               func(m *historydlqpb.StoredMessage) { m.Task.ShardId++ },
-		"empty payload":             func(m *historydlqpb.StoredMessage) { m.Task.Blob.Data = nil },
-		"unsupported encoding":      func(m *historydlqpb.StoredMessage) { m.Task.Blob.EncodingType = 0 },
-		"different ref":             func(m *historydlqpb.StoredMessage) { m.Ref.EntryKey = "other" },
+		"missing identity":       func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity = nil },
+		"different entry":        func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity.TaskId++ },
+		"different source shard": func(m *historydlqpb.StoredMessage) { m.SourceTaskIdentity.SourceShardId++; m.Task.ShardId++ },
+		"wrong shard":            func(m *historydlqpb.StoredMessage) { m.Task.ShardId++ },
+		"empty payload":          func(m *historydlqpb.StoredMessage) { m.Task.Blob.Data = nil },
+		"unsupported encoding":   func(m *historydlqpb.StoredMessage) { m.Task.Blob.EncodingType = 0 },
+		"different ref":          func(m *historydlqpb.StoredMessage) { m.Ref.EntryKey = "other" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -356,31 +356,32 @@ func TestClientEnqueueRejectsDifferentEntry(t *testing.T) {
 	require.ErrorAs(t, err, new(*serviceerror.DataLoss))
 }
 
-func TestClientProducerBuckets(t *testing.T) {
+func TestClientProducersShareSegment(t *testing.T) {
 	t.Parallel()
 	h, ctx, _, _ := newHandlerTestEnvironment(t)
 	client := NewClient(log.NewNoopLogger(), testRPCClient{enqueue: h.Enqueue, read: h.ReadMessage})
-	segments := make(map[string]struct{})
-	for _, fixture := range []struct {
+	segments := make(map[string]string)
+	for i, fixture := range []struct {
 		namespaceID string
 		archetypeID uint32
 		businessID  string
-		bucketID    uint32
 	}{
-		{"namespace-9", 9, "business-9", 0},
-		{"namespace-0", 0, "business-0", 1},
-		{"namespace-2", 2, "business-2", 2},
-		{"namespace-1", 1, "business-1", 3},
+		{"namespace-9", 9, "business-9"},
+		{"namespace-0", 0, "business-0"},
+		{"namespace-2", 2, "business-2"},
+		{"namespace-1", 1, "business-1"},
 	} {
 		req := testEnqueueRequest()
 		req.SourceTaskIdentity.NamespaceID = fixture.namespaceID
 		req.SourceTaskIdentity.ArchetypeID = fixture.archetypeID
 		req.SourceTaskIdentity.BusinessID = fixture.businessID
-		require.Equal(t, fixture.bucketID, SegmentBucketID(req.SourceTaskIdentity))
+		req.SourceTaskIdentity.TaskID += int64(i)
 		first, err := client.Enqueue(ctx, req)
 		require.NoError(t, err)
-		require.NotContains(t, segments, first.BusinessID)
-		segments[first.BusinessID] = struct{}{}
+		if runID, ok := segments[first.BusinessID]; ok {
+			require.Equal(t, runID, first.RunID)
+		}
+		segments[first.BusinessID] = first.RunID
 		req.SourceTaskIdentity.TaskID += 1 << 40
 		req.SourceTaskIdentity.RunID = "next-run"
 		second, err := client.Enqueue(ctx, req)
@@ -393,7 +394,7 @@ func TestClientProducerBuckets(t *testing.T) {
 		require.Equal(t, req.SourceTaskIdentity, stored.SourceTaskIdentity)
 		protorequire.ProtoEqual(t, req.Task, stored.Task)
 	}
-	require.Len(t, segments, 4)
+	require.Len(t, segments, 1)
 }
 
 func (c testRPCClient) ListEntries(ctx context.Context, req *historydlqpb.ListEntriesRequest, _ ...grpc.CallOption) (*historydlqpb.ListEntriesResponse, error) {

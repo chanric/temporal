@@ -110,24 +110,59 @@ func (tc *dlqTestCase) Run(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	if p.command == "read" && p.dlqVersion != "v1" {
-		bound := int64(persistence.MaxQueueMessageID)
-		if p.lastMessageID != "" {
-			parsed, parseErr := strconv.ParseInt(p.lastMessageID, 10, 64)
-			if parseErr == nil {
-				bound = parsed
-			}
-		}
-		for _, request := range p.adminClient.getDLQTasksRequests {
-			require.NotNil(t, request.InclusiveMaxTaskMetadata)
-			require.Equal(t, bound, request.InclusiveMaxTaskMetadata.MessageId)
-		}
-	}
 	if tc.validateStdout != nil {
 		tc.validateStdout(t, &stdout)
 	}
 	if tc.validateStderr != nil {
 		tc.validateStderr(t, &stderr)
+	}
+}
+
+//parallelize:ignore // CLI apps mutate shared command and flag definitions.
+func TestDLQReadMessageBound(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		lastMessageID     string
+		wantBound         int64
+		continuationToken []byte
+		wantRequestCount  int
+	}{
+		{name: "omitted", wantBound: persistence.MaxQueueMessageID, wantRequestCount: 1},
+		{name: "zero", lastMessageID: "0", wantBound: 0, wantRequestCount: 1},
+		{
+			name: "positive across pages", lastMessageID: "21", wantBound: 21,
+			continuationToken: []byte("next"), wantRequestCount: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &fakeAdminClient{getDLQTasksResponses: []*adminservice.GetDLQTasksResponse{
+				{NextPageToken: tc.continuationToken}, {},
+			}}
+			var output bytes.Buffer
+			app := tdbgtest.NewCliApp(func(params *tdbg.Params) {
+				params.ClientFactory = fakeClientFactory{adminClient: client}
+				params.Writer = &output
+				params.ErrWriter = &output
+			})
+			args := []string{
+				"tdbg", "--" + tdbg.FlagYes, "dlq", "--" + tdbg.FlagDLQVersion, "v2", "read",
+				"--" + tdbg.FlagDLQType, "1",
+				"--" + tdbg.FlagCluster, "source",
+				"--" + tdbg.FlagTargetCluster, "target",
+			}
+			args = appendArg(args, tdbg.FlagLastMessageID, tc.lastMessageID)
+			require.NoError(t, app.RunContext(t.Context(), args))
+			require.Len(t, client.getDLQTasksRequests, tc.wantRequestCount)
+			for i, request := range client.getDLQTasksRequests {
+				require.NotNil(t, request.InclusiveMaxTaskMetadata)
+				require.Equal(t, tc.wantBound, request.InclusiveMaxTaskMetadata.MessageId)
+				if i == 0 {
+					require.Empty(t, request.NextPageToken)
+				} else {
+					require.Equal(t, tc.continuationToken, request.NextPageToken)
+				}
+			}
+		})
 	}
 }
 

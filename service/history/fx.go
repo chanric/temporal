@@ -27,6 +27,7 @@ import (
 	"go.temporal.io/server/common/membership"
 	"go.temporal.io/server/common/metrics"
 	"go.temporal.io/server/common/namespace"
+	"go.temporal.io/server/common/persistence"
 	persistenceClient "go.temporal.io/server/common/persistence/client"
 	"go.temporal.io/server/common/persistence/visibility"
 	"go.temporal.io/server/common/persistence/visibility/manager"
@@ -135,6 +136,9 @@ var Module = fx.Options(
 	callback.Module,
 	historydlq.Module,
 	fx.Provide(historydlqapi.NewStore),
+	fx.Provide(func(store *historydlqapi.Store) persistence.ListDLQQueuesFn {
+		return store.ListQueuesForMetrics
+	}),
 	namespacereplication.Module,
 	chasmnexus.Module,
 	chasmworkflow.Module,

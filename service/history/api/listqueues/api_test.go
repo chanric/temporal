@@ -9,8 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/server/api/historyservice/v1"
+	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/service/history/api/historydlq"
 	"go.temporal.io/server/service/history/api/listqueues"
+	"go.temporal.io/server/service/history/configs"
 )
 
 // failingHistoryTaskQueueManager is a [persistence.HistoryTaskQueueManager] that always fails.
@@ -23,7 +26,7 @@ func TestInvoke_UnavailableError(t *testing.T) {
 
 	_, err := listqueues.Invoke(
 		context.Background(),
-		failingHistoryTaskQueueManager{},
+		historydlq.NewStore(failingHistoryTaskQueueManager{}, nil, nil, nil, &configs.Config{TaskDLQReadCHASM: dynamicconfig.GetBoolPropertyFn(false)}),
 		&historyservice.ListQueuesRequest{
 			QueueType: int32(persistence.QueueTypeHistoryDLQ),
 			PageSize:  0,

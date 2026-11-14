@@ -30,7 +30,7 @@ message TaskIdentity {
   uint32 archetype_id = 6;
 }
 
-// SegmentState contains the identity and storage budget of one producer-routed DLQ segment.
+// SegmentState contains the identity and storage budget of one DLQ segment.
 message SegmentState {
   // Queue whose entries are stored in this segment.
   temporal.server.api.common.v1.HistoryDLQKey queue = 1;
@@ -38,16 +38,28 @@ message SegmentState {
   int32 source_shard_id = 2;
   // Conservative retained-byte budget, including metadata and framework reserves.
   int64 retained_bytes = 4;
-  // Producer-hash bucket assigned to this segment.
-  uint32 bucket_id = 5;
   // Smallest pending message ID, or -1 when the segment is empty.
   int64 min_message_id = 6;
+}
+
+// EntryTaskIdentity identifies an original task within its segment.
+message EntryTaskIdentity {
+  // ID assigned when the original task was persisted.
+  int64 task_id = 1;
+  // Original execution namespace.
+  string namespace_id = 2;
+  // Original execution Business ID (Workflow ID for workflows).
+  string business_id = 3;
+  // Original execution Run ID.
+  string run_id = 4;
+  // Original execution archetype; zero is permitted for workflow tasks.
+  uint32 archetype_id = 5;
 }
 
 // EntryState contains metadata for one task in a DLQ segment.
 message EntryState {
   // Identity of the persisted task that this entry represents.
-  TaskIdentity source_task_identity = 1;
+  EntryTaskIdentity source_task_identity = 1;
   // Server-assigned numeric bound for operator requests; collisions are allowed.
   int64 message_id = 2;
   // Server time assigned once when the entry is accepted.
@@ -58,7 +70,7 @@ message EntryState {
 
 // MessageRef addresses one exact entry in a CHASM DLQ segment.
 message MessageRef {
-  // Stable segment Business ID derived from queue, source shard, and producer bucket.
+  // Stable segment Business ID derived from queue and source shard.
   string business_id = 2;
   // Exact accepted segment run, required for reads and resolution.
   string run_id = 3;
@@ -85,7 +97,7 @@ message StoredMessage {
 message EnqueueRequest {
   // Routing namespace, always the cluster-local temporal-system ID.
   string system_namespace_id = 1;
-  // Routing Business ID derived from the queue, source shard, and producer bucket.
+  // Routing Business ID derived from the queue and source shard.
   string business_id = 2;
   // Queue containing this failed task.
   temporal.server.api.common.v1.HistoryDLQKey queue = 3;

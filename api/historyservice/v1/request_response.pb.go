@@ -8527,6 +8527,8 @@ type ListQueuesRequest struct {
 	QueueType     int32                  `protobuf:"varint,1,opt,name=queue_type,json=queueType,proto3" json:"queue_type,omitempty"`
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	NextPageToken []byte                 `protobuf:"bytes,3,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	// Include pending CHASM entries when listing history DLQs.
+	IncludeChasm  bool `protobuf:"varint,4,opt,name=include_chasm,json=includeChasm,proto3" json:"include_chasm,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8580,6 +8582,13 @@ func (x *ListQueuesRequest) GetNextPageToken() []byte {
 		return x.NextPageToken
 	}
 	return nil
+}
+
+func (x *ListQueuesRequest) GetIncludeChasm() bool {
+	if x != nil {
+		return x.IncludeChasm
+	}
+	return false
 }
 
 type ListQueuesResponse struct {
@@ -11504,12 +11513,13 @@ const file_temporal_server_api_historyservice_v1_request_response_proto_rawDesc 
 	"\adlq_key\x18\x01 \x01(\v2,.temporal.server.api.common.v1.HistoryDLQKeyR\x06dlqKey\x12t\n" +
 	"\x1binclusive_max_task_metadata\x18\x02 \x01(\v25.temporal.server.api.common.v1.HistoryDLQTaskMetadataR\x18inclusiveMaxTaskMetadata:\x06\x92\xc4\x03\x02\x10\x01\"C\n" +
 	"\x16DeleteDLQTasksResponse\x12)\n" +
-	"\x10messages_deleted\x18\x01 \x01(\x03R\x0fmessagesDeleted\"\x7f\n" +
+	"\x10messages_deleted\x18\x01 \x01(\x03R\x0fmessagesDeleted\"\xa4\x01\n" +
 	"\x11ListQueuesRequest\x12\x1d\n" +
 	"\n" +
 	"queue_type\x18\x01 \x01(\x05R\tqueueType\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12&\n" +
-	"\x0fnext_page_token\x18\x03 \x01(\fR\rnextPageToken:\x06\x92\xc4\x03\x02\x10\x01\"\x92\x02\n" +
+	"\x0fnext_page_token\x18\x03 \x01(\fR\rnextPageToken\x12#\n" +
+	"\rinclude_chasm\x18\x04 \x01(\bR\fincludeChasm:\x06\x92\xc4\x03\x02\x10\x01\"\x92\x02\n" +
 	"\x12ListQueuesResponse\x12[\n" +
 	"\x06queues\x18\x01 \x03(\v2C.temporal.server.api.historyservice.v1.ListQueuesResponse.QueueInfoR\x06queues\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\fR\rnextPageToken\x1aw\n" +

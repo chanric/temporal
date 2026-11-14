@@ -2124,7 +2124,7 @@ func (h *Handler) ListQueues(
 	ctx context.Context,
 	request *historyservice.ListQueuesRequest,
 ) (*historyservice.ListQueuesResponse, error) {
-	return listqueues.Invoke(ctx, h.taskQueueManager, request)
+	return listqueues.Invoke(ctx, h.dlqStore, request)
 }
 
 func (h *Handler) ListTasks(

@@ -37,7 +37,7 @@ func newEntry(ctx chasm.MutableContext, req EnqueueRequest, enqueuedAt time.Time
 	}
 	return &Entry{
 		EntryState: &historydlqpb.EntryState{
-			SourceTaskIdentity: taskIdentityToProto(req.SourceTaskIdentity),
+			SourceTaskIdentity: taskIdentityToEntryProto(req.SourceTaskIdentity),
 			MessageId:          id,
 			EnqueuedAt:         timestamppb.New(enqueuedAt),
 			PayloadSizeBytes:   int64(proto.Size(req.Task)),
@@ -46,10 +46,10 @@ func newEntry(ctx chasm.MutableContext, req EnqueueRequest, enqueuedAt time.Time
 	}, nil
 }
 
-func (e *Entry) Read(ctx chasm.Context, ref MessageRef) (StoredMessage, error) {
+func (e *Entry) Read(ctx chasm.Context, ref MessageRef, sourceShardID int32) (StoredMessage, error) {
 	stored := StoredMessage{
 		Ref:                ref,
-		SourceTaskIdentity: taskIdentityProtoToIdentity(e.GetSourceTaskIdentity()),
+		SourceTaskIdentity: entryTaskIdentityProtoToIdentity(e.GetSourceTaskIdentity(), sourceShardID),
 	}
 	task, ok := e.Task.TryGet(ctx)
 	if !ok {

@@ -1,10 +1,14 @@
 package persistence
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/membership"
 	"go.temporal.io/server/common/metrics"
@@ -49,7 +53,7 @@ func TestDLQMetricsEmitter_EmitMetrics_WhenInstanceHostsShardOne(t *testing.T) {
 	hostInfoProvider := membership.NewMockHostInfoProvider(ctrl)
 	hostInfoProvider.EXPECT().HostInfo().Return(membership.NewHostInfoFromAddress("testAddress")).Times(1)
 	categoryRegistry := tasks.NewDefaultTaskCategoryRegistry()
-	emitter := NewDLQMetricsEmitter(metricsHandler, logger, manager, resolver, hostInfoProvider, categoryRegistry)
+	emitter := NewDLQMetricsEmitter(metricsHandler, logger, manager, resolver, hostInfoProvider, categoryRegistry, nil)
 	emitter.emitMetricsTimer = time.NewTicker(60 * time.Millisecond)
 	logger.EXPECT().Info(gomock.Any()).AnyTimes()
 	logger.EXPECT().Error(gomock.Any()).AnyTimes()
@@ -90,7 +94,7 @@ func TestDLQMetricsEmitter_DoesNotEmitMetrics_WhenInstanceDoesNotHostShardOne(t 
 	hostInfoProvider := membership.NewMockHostInfoProvider(ctrl)
 	hostInfoProvider.EXPECT().HostInfo().Return(membership.NewHostInfoFromAddress("testAddress2")).MinTimes(1)
 
-	emitter := NewDLQMetricsEmitter(metricsHandler, logger, manager, resolver, hostInfoProvider, tasks.NewDefaultTaskCategoryRegistry())
+	emitter := NewDLQMetricsEmitter(metricsHandler, logger, manager, resolver, hostInfoProvider, tasks.NewDefaultTaskCategoryRegistry(), nil)
 	emitter.emitMetricsTimer = time.NewTicker(10 * time.Millisecond)
 	logger.EXPECT().Info(gomock.Any()).AnyTimes()
 	logger.EXPECT().Error(gomock.Any()).AnyTimes()
@@ -114,4 +118,50 @@ func TestDLQMetricsEmitter_DoesNotEmitMetrics_WhenInstanceDoesNotHostShardOne(t 
 	}, 5*time.Second, 15*time.Millisecond)
 	emitter.Stop()
 	<-emitter.shutdownCh
+}
+
+func TestMetricsCountsPendingEntries(t *testing.T) {
+	t.Parallel()
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint("listing failure=", fail), func(t *testing.T) {
+			t.Parallel()
+			handler := metricstest.NewCaptureHandler()
+			capture := handler.StartCapture()
+			calls := 0
+			lister := func(_ context.Context, req *ListQueuesRequest) (*ListQueuesResponse, error) {
+				calls++
+				require.Equal(t, QueueTypeHistoryDLQ, req.QueueType)
+				require.Equal(t, 100, req.PageSize)
+				if calls == 1 {
+					require.Empty(t, req.NextPageToken)
+					return &ListQueuesResponse{Queues: []QueueInfo{{QueueName: GetHistoryTaskQueueName(1, "source", "target"), MessageCount: 7}}, NextPageToken: []byte("next")}, nil
+				}
+				require.Equal(t, []byte("next"), req.NextPageToken)
+				if fail {
+					return nil, serviceerror.NewUnavailable("segment read failed")
+				}
+				return &ListQueuesResponse{Queues: []QueueInfo{{QueueName: GetHistoryTaskQueueName(1, "other", "target"), MessageCount: 3}}}, nil
+			}
+			emitter := NewDLQMetricsEmitter(handler, log.NewNoopLogger(), nil, nil, nil, tasks.NewDefaultTaskCategoryRegistry(), lister)
+			defer emitter.emitMetricsTimer.Stop()
+			emitter.emitMetrics()
+			require.Equal(t, 2, calls)
+			recordings := capture.Snapshot()[metrics.DLQMessageCount.Name()]
+			if fail {
+				require.Empty(t, recordings)
+				return
+			}
+			counts := make(map[string]float64)
+			for _, recording := range recordings {
+				counts[recording.Tags[metrics.TaskCategoryTagName]] = recording.Value.(float64)
+			}
+			require.InDelta(t, 10, counts["transfer"], 1e-9)
+			for name, count := range counts {
+				if name != "transfer" {
+					require.Zero(t, count)
+				}
+			}
+			require.Len(t, counts, len(tasks.NewDefaultTaskCategoryRegistry().GetCategories()))
+		})
+	}
 }

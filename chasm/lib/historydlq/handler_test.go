@@ -81,21 +81,21 @@ func testEnqueueRequestProto(t *testing.T) *historydlqpb.EnqueueRequest {
 func TestEnqueueValidation(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*historydlqpb.EnqueueRequest){
-		"system":          func(r *historydlqpb.EnqueueRequest) { r.SystemNamespaceId = "other" },
-		"business":        func(r *historydlqpb.EnqueueRequest) { r.BusinessId = "other" },
-		"producer bucket": func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.NamespaceId += "-other" },
-		"queue":           func(r *historydlqpb.EnqueueRequest) { r.Queue = nil },
-		"category":        func(r *historydlqpb.EnqueueRequest) { r.Queue.TaskCategory = 0 },
-		"source":          func(r *historydlqpb.EnqueueRequest) { r.Queue.SourceCluster = "" },
-		"target":          func(r *historydlqpb.EnqueueRequest) { r.Queue.TargetCluster = "other" },
-		"original":        func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity = nil },
-		"task ID":         func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.TaskId = 0 },
-		"shard":           func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.SourceShardId = 0 },
-		"different shard": func(r *historydlqpb.EnqueueRequest) { r.Task.ShardId++ },
-		"task":            func(r *historydlqpb.EnqueueRequest) { r.Task = nil },
-		"blob":            func(r *historydlqpb.EnqueueRequest) { r.Task.Blob = nil },
-		"empty blob":      func(r *historydlqpb.EnqueueRequest) { r.Task.Blob.Data = nil },
-		"encoding":        func(r *historydlqpb.EnqueueRequest) { r.Task.Blob.EncodingType = 0 },
+		"system":               func(r *historydlqpb.EnqueueRequest) { r.SystemNamespaceId = "other" },
+		"business":             func(r *historydlqpb.EnqueueRequest) { r.BusinessId = "other" },
+		"source shard routing": func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.SourceShardId++; r.Task.ShardId++ },
+		"queue":                func(r *historydlqpb.EnqueueRequest) { r.Queue = nil },
+		"category":             func(r *historydlqpb.EnqueueRequest) { r.Queue.TaskCategory = 0 },
+		"source":               func(r *historydlqpb.EnqueueRequest) { r.Queue.SourceCluster = "" },
+		"target":               func(r *historydlqpb.EnqueueRequest) { r.Queue.TargetCluster = "other" },
+		"original":             func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity = nil },
+		"task ID":              func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.TaskId = 0 },
+		"shard":                func(r *historydlqpb.EnqueueRequest) { r.SourceTaskIdentity.SourceShardId = 0 },
+		"different shard":      func(r *historydlqpb.EnqueueRequest) { r.Task.ShardId++ },
+		"task":                 func(r *historydlqpb.EnqueueRequest) { r.Task = nil },
+		"blob":                 func(r *historydlqpb.EnqueueRequest) { r.Task.Blob = nil },
+		"empty blob":           func(r *historydlqpb.EnqueueRequest) { r.Task.Blob.Data = nil },
+		"encoding":             func(r *historydlqpb.EnqueueRequest) { r.Task.Blob.EncodingType = 0 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

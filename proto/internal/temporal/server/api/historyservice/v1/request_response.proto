@@ -1196,6 +1196,8 @@ message ListQueuesRequest {
   int32 queue_type = 1;
   int32 page_size = 2;
   bytes next_page_token = 3;
+  // Include pending CHASM entries when listing history DLQs.
+  bool include_chasm = 4;
 }
 
 message ListQueuesResponse {

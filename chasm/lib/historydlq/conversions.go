@@ -81,6 +81,27 @@ func taskIdentityProtoToIdentity(identity *historydlqpb.TaskIdentity) TaskIdenti
 	}
 }
 
+func taskIdentityToEntryProto(identity TaskIdentity) *historydlqpb.EntryTaskIdentity {
+	return &historydlqpb.EntryTaskIdentity{
+		TaskId:      identity.TaskID,
+		NamespaceId: identity.NamespaceID,
+		BusinessId:  identity.BusinessID,
+		RunId:       identity.RunID,
+		ArchetypeId: identity.ArchetypeID,
+	}
+}
+
+func entryTaskIdentityProtoToIdentity(identity *historydlqpb.EntryTaskIdentity, sourceShardID int32) TaskIdentity {
+	return TaskIdentity{
+		SourceShardID: sourceShardID,
+		TaskID:        identity.GetTaskId(),
+		NamespaceID:   identity.GetNamespaceId(),
+		BusinessID:    identity.GetBusinessId(),
+		RunID:         identity.GetRunId(),
+		ArchetypeID:   identity.GetArchetypeId(),
+	}
+}
+
 func segmentRefToProto(ref SegmentRef) *historydlqpb.SegmentRef {
 	return &historydlqpb.SegmentRef{Queue: queueKeyToProto(ref.Queue), BusinessId: ref.BusinessID, RunId: ref.RunID}
 }

@@ -18,6 +18,7 @@ import (
 )
 
 type segmentClient interface {
+	DescribeSegment(context.Context, dlq.SegmentRef) (dlq.SegmentStats, error)
 	ReadSegmentMessages(context.Context, dlq.ReadSegmentMessagesRequest) (dlq.MessagePage, error)
 }
 

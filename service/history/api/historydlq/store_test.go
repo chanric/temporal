@@ -40,9 +40,14 @@ func (r queueReader) ReadRawTasks(ctx context.Context, req *persistence.ReadRawT
 }
 
 type metadataClient struct {
+	describe func(context.Context, dlq.SegmentRef) (dlq.SegmentStats, error)
 	fullRead func(context.Context, dlq.ReadSegmentMessagesRequest) (dlq.MessagePage, error)
 	list     func(context.Context, dlq.ListEntriesRequest) (dlq.EntryPage, error)
 	read     func(context.Context, dlq.MessageRef) (dlq.StoredMessage, error)
+}
+
+func (c metadataClient) DescribeSegment(ctx context.Context, ref dlq.SegmentRef) (dlq.SegmentStats, error) {
+	return c.describe(ctx, ref)
 }
 
 func (c metadataClient) ListEntries(ctx context.Context, req dlq.ListEntriesRequest) (dlq.EntryPage, error) {
@@ -82,8 +87,8 @@ func readFixture(t *testing.T) (*Store, *historyservice.GetDLQTasksRequest, []dl
 	for i := range 3 {
 		identity := []dlq.TaskIdentity{
 			{SourceShardID: 1, TaskID: 1, NamespaceID: "namespace-9", ArchetypeID: 9, BusinessID: "business-9"},
-			{SourceShardID: 1, TaskID: 2, NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"},
-			{SourceShardID: 2, TaskID: 3, NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"},
+			{SourceShardID: 2, TaskID: 2, NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"},
+			{SourceShardID: 3, TaskID: 3, NamespaceID: "namespace-0", ArchetypeID: 0, BusinessID: "business-0"},
 		}[i]
 		businessID, err := dlq.SegmentBusinessID(queue, identity)
 		require.NoError(t, err)
@@ -149,7 +154,7 @@ func TestMixedStoreReadOrdering(t *testing.T) {
 	protorequire.ProtoEqual(t, want, response)
 }
 
-func TestPaginationTiesAcrossBuckets(t *testing.T) {
+func TestPaginationTiesAcrossSegments(t *testing.T) {
 	t.Parallel()
 	store, req, _ := readFixture(t)
 	var got []*commonspb.HistoryDLQTask

@@ -1425,16 +1425,23 @@ func (s *adminHandlerSuite) TestGetNamespace_EmptyRequest() {
 
 func (s *adminHandlerSuite) TestGetDLQTasks() {
 	for _, tc := range []struct {
-		name string
-		err  error
+		name            string
+		maxTaskMetadata *commonspb.HistoryDLQTaskMetadata
+		err             error
 	}{
+		{name: "success omitted bound"},
 		{
-			name: "success",
-			err:  nil,
+			name:            "success zero bound",
+			maxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{},
 		},
 		{
-			name: "failed to get dlq tasks",
-			err:  serviceerror.NewNotFound("failed to get dlq tasks"),
+			name:            "success positive bound",
+			maxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+		},
+		{
+			name:            "failed to get dlq tasks",
+			maxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+			err:             serviceerror.NewNotFound("failed to get dlq tasks"),
 		},
 	} {
 		s.Run(tc.name, func() {
@@ -1445,7 +1452,7 @@ func (s *adminHandlerSuite) TestGetDLQTasks() {
 					SourceCluster: "test-source-cluster",
 					TargetCluster: "test-target-cluster",
 				},
-				InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+				InclusiveMaxTaskMetadata: tc.maxTaskMetadata,
 				PageSize:                 1,
 				NextPageToken:            []byte{13},
 			})
@@ -1473,7 +1480,7 @@ func (s *adminHandlerSuite) TestGetDLQTasks() {
 					SourceCluster: "test-source-cluster",
 					TargetCluster: "test-target-cluster",
 				},
-				InclusiveMaxTaskMetadata: &commonspb.HistoryDLQTaskMetadata{MessageId: 21},
+				InclusiveMaxTaskMetadata: tc.maxTaskMetadata,
 				PageSize:                 1,
 				NextPageToken:            []byte{13},
 			})
@@ -1889,6 +1896,7 @@ func (s *adminHandlerSuite) TestAddDLQTasks_Err() {
 
 func (s *adminHandlerSuite) TestListQueues_Ok() {
 	s.mockHistoryClient.EXPECT().ListQueues(gomock.Any(), &historyservice.ListQueuesRequest{
+		IncludeChasm:  true,
 		QueueType:     int32(persistence.QueueTypeHistoryDLQ),
 		PageSize:      0,
 		NextPageToken: nil,
@@ -1909,6 +1917,17 @@ func (s *adminHandlerSuite) TestListQueues_Ok() {
 	s.Equal("testQueue", resp.Queues[0].QueueName)
 	s.Equal(int64(100), resp.Queues[0].MessageCount)
 
+}
+
+func (s *adminHandlerSuite) TestListQueuesNonDLQ() {
+	s.mockHistoryClient.EXPECT().ListQueues(gomock.Any(), &historyservice.ListQueuesRequest{
+		QueueType: int32(persistence.QueueTypeHistoryNormal), PageSize: 10,
+	}).Return(&historyservice.ListQueuesResponse{}, nil)
+	response, err := s.handler.ListQueues(context.Background(), &adminservice.ListQueuesRequest{
+		QueueType: int32(persistence.QueueTypeHistoryNormal), PageSize: 10,
+	})
+	s.NoError(err)
+	s.Empty(response.Queues)
 }
 
 func (s *adminHandlerSuite) TestListQueues_Err() {
@@ -3126,12 +3145,13 @@ func (s *adminHandlerSuite) TestCountExecutions() {
 }
 
 func (s *adminHandlerSuite) TestAddTasks_ReturnTaskFailures() {
-	failures := []*commonspb.AddTaskFailure{{TaskIndex: 0, Message: "invalid task", NonRetryable: true}}
+	blob := &commonpb.DataBlob{EncodingType: enumspb.ENCODING_TYPE_PROTO3, Data: []byte("test-data")}
+	failures := []*commonspb.AddTaskFailure{{TaskIndex: 1, Message: "invalid task", NonRetryable: true}}
 	s.mockHistoryClient.EXPECT().AddTasks(gomock.Any(), &historyservice.AddTasksRequest{
-		ShardId: 13, ReturnTaskFailures: true, Tasks: []*historyservice.AddTasksRequest_Task{nil, {CategoryId: 3}},
+		ShardId: 13, ReturnTaskFailures: true, Tasks: []*historyservice.AddTasksRequest_Task{{CategoryId: 3, Blob: blob}, nil},
 	}).Return(&historyservice.AddTasksResponse{Failures: failures}, nil)
 	response, err := s.handler.AddTasks(s.T().Context(), &adminservice.AddTasksRequest{
-		ShardId: 13, ReturnTaskFailures: true, Tasks: []*adminservice.AddTasksRequest_Task{nil, {CategoryId: 3}},
+		ShardId: 13, ReturnTaskFailures: true, Tasks: []*adminservice.AddTasksRequest_Task{{CategoryId: 3, Blob: blob}, nil},
 	})
 	s.NoError(err)
 	s.Equal(&adminservice.AddTasksResponse{Failures: failures}, response)

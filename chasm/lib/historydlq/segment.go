@@ -52,7 +52,6 @@ func NewSegment(ctx chasm.MutableContext, req EnqueueRequest) (*Segment, error) 
 	state := &historydlqpb.SegmentState{
 		Queue:         queueKeyToProto(req.Queue),
 		SourceShardId: req.SourceTaskIdentity.SourceShardID,
-		BucketId:      SegmentBucketID(req.SourceTaskIdentity),
 		MinMessageId:  -1,
 	}
 	state.RetainedBytes = int64(proto.Size(state)) + segmentNodeReserve
@@ -71,8 +70,7 @@ func (s *Segment) Append(ctx chasm.MutableContext, req EnqueueRequest) (appendRe
 		return appendResult{}, serviceerror.NewInvalidArgument("history DLQ segments require the temporal-system namespace")
 	}
 	if queueProtoToKey(s.GetQueue()) != req.Queue ||
-		req.SourceTaskIdentity.SourceShardID != s.GetSourceShardId() ||
-		s.GetBucketId() != SegmentBucketID(req.SourceTaskIdentity) {
+		req.SourceTaskIdentity.SourceShardID != s.GetSourceShardId() {
 		return appendResult{}, serviceerror.NewInvalidArgument("history DLQ entry does not belong to this segment")
 	}
 	entryKey, err := EntryKey(req.Queue, req.SourceTaskIdentity)
@@ -117,7 +115,7 @@ func (s *Segment) ReadEntry(ctx chasm.Context, ref MessageRef) (StoredMessage, e
 	if !sameEntryReference(s.messageReference(ctx, ref.EntryKey, entry.EntryState), ref) {
 		return StoredMessage{}, serviceerror.NewFailedPrecondition("history DLQ reference does not match the stored entry")
 	}
-	return entry.Read(ctx, ref)
+	return entry.Read(ctx, ref, s.GetSourceShardId())
 }
 
 // ResolveEntry deletes an entry and its payload. Missing entries are already resolved.
