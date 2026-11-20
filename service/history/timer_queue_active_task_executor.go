@@ -130,6 +130,8 @@ func (t *timerQueueActiveTaskExecutor) Execute(
 		err = t.executeChasmSideEffectTimerTask(ctx, task)
 	case *tasks.TimeSkippingFastForwardTimerTask:
 		err = t.executeTimeSkippingTimerTask(ctx, task)
+	case *tasks.ChasmSpeculativeTaskWakeupTask:
+		err = t.executeChasmSpeculativeWakeup(ctx, task)
 	default:
 		err = queueserrors.NewUnprocessableTaskError("unknown task type")
 	}
@@ -1129,6 +1131,64 @@ func (t *timerQueueActiveTaskExecutor) executeChasmSideEffectTimerTask(
 		tree,
 		task,
 	)
+}
+
+// executeChasmSpeculativeWakeup persists the pending speculative CHASM transition of a cached
+// execution once its persist deadline passes. The queue never retries it.
+func (t *timerQueueActiveTaskExecutor) executeChasmSpeculativeWakeup(
+	ctx context.Context,
+	task *tasks.ChasmSpeculativeTaskWakeupTask,
+) (retErr error) {
+	// The memory queue runs tasks for every namespace, so the wake-up checks that this cluster is active.
+	nsEntry, err := t.registry.GetNamespaceByID(namespace.ID(task.NamespaceID))
+	if err != nil {
+		return err
+	}
+	if nsEntry.ActiveClusterName(namespace.RoutingKey{ID: task.WorkflowID}) != t.currentClusterName {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, taskTimeout)
+	defer cancel()
+
+	wfCtx, ms, release, err := t.loadCachedSpeculativeExecution(ctx, task)
+	if err != nil || ms == nil {
+		return err
+	}
+	defer func() { release(retErr) }()
+
+	tree := ms.ChasmTree()
+	result, err := tree.RunSpeculativeWakeup(ctx, task, ms.Now())
+	if err != nil {
+		return err
+	}
+	if result.PersistNow {
+		return wfCtx.UpdateWorkflowExecutionAsActive(ctx, t.shardContext)
+	}
+	return tree.ArmSpeculativeWakeup()
+}
+
+// loadCachedSpeculativeExecution locks the execution and returns its mutable state only if it is
+// already cached. Speculative state lives only in the cached copy. A nil mutable state means the
+// lock is already released.
+func (t *timerQueueActiveTaskExecutor) loadCachedSpeculativeExecution(
+	ctx context.Context,
+	task *tasks.ChasmSpeculativeTaskWakeupTask,
+) (historyi.WorkflowContext, historyi.MutableState, historyi.ReleaseWorkflowContextFunc, error) {
+	wfCtx, release, err := getWorkflowExecutionContextForTask(ctx, t.shardContext, t.cache, task)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if wfCtxImpl, ok := wfCtx.(*workflow.ContextImpl); ok && wfCtxImpl.MutableState == nil {
+		release(nil)
+		return nil, nil, nil, nil
+	}
+	ms, err := wfCtx.LoadMutableState(ctx, t.shardContext)
+	if err != nil {
+		release(err)
+		return nil, nil, nil, err
+	}
+	return wfCtx, ms, release, nil
 }
 
 func (t *timerQueueActiveTaskExecutor) executeChasmPureTimerTask(

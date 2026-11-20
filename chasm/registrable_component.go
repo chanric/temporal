@@ -32,6 +32,15 @@ type (
 		searchAttributesMapper *VisibilitySearchAttributesMapper
 
 		contextValues map[any]any
+
+		speculativeOptions SpeculativeOptions
+	}
+
+	// SpeculativeOptions configures how an execution handles [WithSpeculative] transitions.
+	SpeculativeOptions struct {
+		// PersistInterval persists a pending speculative transition this long after it is applied.
+		// Zero leaves it pending until the next normal transition.
+		PersistInterval time.Duration
 	}
 
 	RegistrableComponentOption func(*RegistrableComponent)
@@ -78,6 +87,14 @@ func WithDetached() RegistrableComponentOption {
 // IsDetached returns true if the component type is registered as detached.
 func (rc *RegistrableComponent) IsDetached() bool {
 	return rc.detached
+}
+
+// WithSpeculativeOptions sets how executions of this archetype handle speculative transitions. It
+// only has an effect on a component registered as the root of an execution.
+func WithSpeculativeOptions(options SpeculativeOptions) RegistrableComponentOption {
+	return func(rc *RegistrableComponent) {
+		rc.speculativeOptions = options
+	}
 }
 
 // WithRecordPrincipals records, on the root component, the principal of the caller that

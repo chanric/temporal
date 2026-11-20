@@ -66,6 +66,8 @@ type chasmEngineSuite struct {
 	archetypeID    chasm.ArchetypeID
 
 	engine *ChasmEngine
+
+	speculativeWakeups []*tasks.ChasmSpeculativeTaskWakeupTask
 }
 
 func TestChasmEngineSuite(t *testing.T) {
@@ -127,7 +129,14 @@ func (s *chasmEngineSuite) SetupTest() {
 	s.True(ok)
 
 	s.mockShard.SetEngineForTesting(s.mockEngine)
-	s.mockEngine.EXPECT().NotifyNewTasks(gomock.Any()).AnyTimes()
+	s.speculativeWakeups = nil
+	s.mockEngine.EXPECT().NotifyNewTasks(gomock.Any()).Do(func(byCategory map[tasks.Category][]tasks.Task) {
+		for _, task := range byCategory[tasks.CategoryMemoryTimer] {
+			if wakeup, ok := task.(*tasks.ChasmSpeculativeTaskWakeupTask); ok {
+				s.speculativeWakeups = append(s.speculativeWakeups, wakeup)
+			}
+		}
+	}).AnyTimes()
 	s.mockEngine.EXPECT().NotifyNewHistoryEvent(gomock.Any()).AnyTimes()
 
 	s.engine = newChasmEngine(
@@ -1587,6 +1596,42 @@ func (s *chasmEngineSuite) readActivityInfo(ref chasm.ComponentRef) *persistence
 		return nil
 	}))
 	return info
+}
+
+const testSpeculativePersistInterval = 200 * time.Millisecond
+
+// SPIKE: periodic persist of speculative transitions.
+func (s *chasmEngineSuite) TestUpdateComponent_Speculative_PersistedByWakeup() {
+	//nolint:revive // unchecked-type-assertion
+	executor := newTimerQueueActiveTaskExecutor(
+		s.mockShard, s.executionCache, nil, s.mockShard.GetLogger(), metrics.NoopMetricsHandler, s.config, nil, nil,
+	).(*timerQueueActiveTaskExecutor)
+
+	ref := s.loadRunningTestExecution(1)
+	start := time.Now()
+	for _, id := range []string{"a", "b"} {
+		_, err := s.engine.UpdateComponent(context.Background(), ref,
+			s.setActivityField(func(info *persistencespb.ActivityInfo) { info.ActivityId = id }), chasm.WithSpeculative())
+		s.NoError(err)
+	}
+	// The first speculative transition sets the deadline; the second joins it.
+	s.Require().Len(s.speculativeWakeups, 1)
+	s.WithinDuration(start.Add(testSpeculativePersistInterval), s.speculativeWakeups[0].VisibilityTimestamp, 100*time.Millisecond)
+
+	// Fired early: nothing is persisted and the wake-up is armed again for the same deadline.
+	s.NoError(executor.executeChasmSpeculativeWakeup(context.Background(), s.speculativeWakeups[0]))
+	s.Require().Len(s.speculativeWakeups, 2)
+	s.Equal(s.speculativeWakeups[0].VisibilityTimestamp, s.speculativeWakeups[1].VisibilityTimestamp)
+
+	time.Sleep(time.Until(s.speculativeWakeups[1].VisibilityTimestamp))
+	persisted := &persistencespb.ActivityInfo{}
+	s.expectPersistedActivityInfo(ref, persisted)
+	s.NoError(executor.executeChasmSpeculativeWakeup(context.Background(), s.speculativeWakeups[1]))
+	s.Equal("b", persisted.ActivityId)
+
+	// A stale wake-up after the write finds nothing pending.
+	s.NoError(executor.executeChasmSpeculativeWakeup(context.Background(), s.speculativeWakeups[0]))
+	s.Len(s.speculativeWakeups, 2)
 }
 
 func (s *chasmEngineSuite) TestUpdateComponent_Speculative_NoPersistence() {
@@ -3848,7 +3893,8 @@ func (l *testChasmLibrary) Components() []*chasm.RegistrableComponent {
 	return []*chasm.RegistrableComponent{
 		chasm.NewRegistrableComponent[*testComponent]("test_component",
 			chasm.WithSearchAttributes(testComponentPausedSearchAttribute),
-			chasm.WithRecordPrincipals()),
+			chasm.WithRecordPrincipals(),
+			chasm.WithSpeculativeOptions(chasm.SpeculativeOptions{PersistInterval: testSpeculativePersistInterval})),
 		chasm.NewRegistrableComponent[*testComponentNoMetadata]("test_component_no_metadata"),
 	}
 }

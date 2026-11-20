@@ -186,6 +186,23 @@ type (
 		// speculativeTransitionFailoverVersion is the namespace failover version of the pending
 		// speculative transition.
 		speculativeTransitionFailoverVersion int64
+		// speculativePersistDeadline is when the pending speculative transition must be persisted, in the
+		// execution's logical time. Zero when the archetype has no persist interval.
+		speculativePersistDeadline time.Time
+
+		// Armed speculative wake-ups, latest fire time first. CloseTransaction clears them.
+		speculativeWakeups []speculativeWakeup
+	}
+
+	speculativeWakeup struct {
+		fireTime time.Time // In the execution's logical time.
+		task     *tasks.ChasmSpeculativeTaskWakeupTask
+	}
+
+	// SpeculativeWakeupResult is what [Node.RunSpeculativeWakeup] leaves for the caller.
+	SpeculativeWakeupResult struct {
+		// PersistNow requires the caller to persist the pending speculative transition.
+		PersistNow bool
 	}
 
 	taskWithAttributes struct {
@@ -228,6 +245,8 @@ type (
 		CurrentVersionedTransition() *persistencespb.VersionedTransition
 		GetWorkflowKey() definition.WorkflowKey
 		AddTasks(...tasks.Task)
+		// AddSpeculativeWakeup schedules an in-memory wake-up for the execution at fireTime.
+		AddSpeculativeWakeup(fireTime time.Time) (*tasks.ChasmSpeculativeTaskWakeupTask, error)
 		AddHistoryEvent(t enumspb.EventType, setAttributes func(*historypb.HistoryEvent)) *historypb.HistoryEvent
 		GenerateEventLoadToken(event *historypb.HistoryEvent) ([]byte, error)
 		LoadHistoryEvent(ctx context.Context, token []byte) (*historypb.HistoryEvent, error)
@@ -1908,9 +1927,69 @@ func (n *Node) ApplySpeculativeTransition(_ context.Context) error {
 		}
 	}
 
+	if !n.speculativeTransitionPending {
+		if interval := n.speculativeOptions().PersistInterval; interval > 0 {
+			n.speculativePersistDeadline = n.backend.Now().Add(interval)
+		}
+	}
 	n.speculativeTransitionPending = true
 	n.speculativeTransitionFailoverVersion = n.backend.GetCurrentVersion()
 	return nil
+}
+
+func (n *Node) speculativeOptions() SpeculativeOptions {
+	rc, ok := n.registry.componentFor(n.root().value)
+	if !ok {
+		return SpeculativeOptions{}
+	}
+	return rc.speculativeOptions
+}
+
+// speculativeWakeupGracePeriod is how long past its fire time an armed wake-up is still expected
+// to run. Older entries may have been lost, so they no longer block arming.
+const speculativeWakeupGracePeriod = time.Second
+
+// ArmSpeculativeWakeup schedules a wake-up for the next speculative deadline if no armed wake-up
+// fires earlier.
+func (n *Node) ArmSpeculativeWakeup() error {
+	if !n.speculativeTransitionPending || n.speculativePersistDeadline.IsZero() {
+		return nil
+	}
+	fireTime := n.speculativePersistDeadline
+	now := n.backend.Now()
+	if fireTime.Before(now) {
+		fireTime = now
+	}
+	// Entries are latest first, so lost wake-ups are at the end.
+	lostBefore := now.Add(-speculativeWakeupGracePeriod)
+	for last := len(n.speculativeWakeups) - 1; last >= 0 && n.speculativeWakeups[last].fireTime.Before(lostBefore); last-- {
+		n.speculativeWakeups = n.speculativeWakeups[:last]
+	}
+	if last := len(n.speculativeWakeups) - 1; last >= 0 && !fireTime.Before(n.speculativeWakeups[last].fireTime) {
+		return nil
+	}
+	task, err := n.backend.AddSpeculativeWakeup(fireTime)
+	if err != nil {
+		return err
+	}
+	n.speculativeWakeups = append(n.speculativeWakeups, speculativeWakeup{fireTime: fireTime, task: task})
+	return nil
+}
+
+// RunSpeculativeWakeup handles a fired wake-up. The caller must call [Node.ArmSpeculativeWakeup]
+// when the result does not persist.
+func (n *Node) RunSpeculativeWakeup(
+	_ context.Context,
+	wakeup *tasks.ChasmSpeculativeTaskWakeupTask,
+	now time.Time,
+) (SpeculativeWakeupResult, error) {
+	n.speculativeWakeups = slices.DeleteFunc(n.speculativeWakeups, func(w speculativeWakeup) bool {
+		return w.task == wakeup || !w.fireTime.After(now)
+	})
+	persistNow := n.speculativeTransitionPending &&
+		!n.speculativePersistDeadline.IsZero() &&
+		!n.speculativePersistDeadline.After(now)
+	return SpeculativeWakeupResult{PersistNow: persistNow}, nil
 }
 
 // SpeculativeTransitionFailoverVersion returns the namespace failover version of the pending speculative
@@ -2814,6 +2893,9 @@ func (n *Node) cleanupTransaction() {
 	n.needsPointerResolution = false
 	n.totalTimeSkippedUpdatedInPassive = false
 	n.speculativeTransitionPending = false
+	n.speculativePersistDeadline = time.Time{}
+	// Fire times may use an old time-skipping offset.
+	n.speculativeWakeups = nil
 
 	// Reset per-node subtreeIsDirty on all nodes in the tree.
 	for _, node := range n.andAllChildren() {
