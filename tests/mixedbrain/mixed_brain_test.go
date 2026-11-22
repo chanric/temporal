@@ -80,10 +80,8 @@ var scenarios = []omesScenario{
 	},
 }
 
-// TestMixedBrain starts two servers in parallel, one using the current branch's source
-// and the other using the latest release tag. It then runs the Omes
-// throughput_stress and scheduler_stress scenarios to ensure that the mixed
-// brain works correctly.
+// TestMixedBrain runs Omes throughput and scheduler scenarios against two server versions.
+// It builds the peer from the latest release tag or MIXED_BRAIN_RELEASE_SOURCE_DIR.
 // Uses shared SQLite files by default so both server processes access the same persistence stores.
 func TestMixedBrain(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -94,15 +92,24 @@ func TestMixedBrain(t *testing.T) {
 	currentLog := filepath.Join(logRoot, "mixedbrain_process-current.log")
 	releaseLog := filepath.Join(logRoot, "mixedbrain_process-release.log")
 
+	releaseSourceDir := os.Getenv("MIXED_BRAIN_RELEASE_SOURCE_DIR")
 	var releaseTag string
 	t.Run("setup", func(t *testing.T) {
 		t.Run("resolve release tag", func(t *testing.T) {
 			t.Parallel()
+			if releaseSourceDir != "" {
+				t.Logf("Building peer server from %s", releaseSourceDir)
+				return
+			}
 			releaseTag = fetchPreviousMinorTag(t)
 			t.Logf("Release tag: %s (current server version: %s)", releaseTag, headers.ServerVersion)
 		})
 		t.Run("download and build Omes", func(t *testing.T) {
 			t.Parallel()
+			if dir := os.Getenv("MIXED_BRAIN_OMES_SOURCE_DIR"); dir != "" {
+				buildOmes(t, dir, omesBinary)
+				return
+			}
 			downloadAndBuildOmes(t, tmpDir, omesBinary)
 		})
 	})
@@ -155,6 +162,7 @@ func TestMixedBrain(t *testing.T) {
 	t.Run("start release server", func(_ *testing.T) {
 		releaseSrv, releaseLogFile = startDevServer(t, "release", releaseLog, devserver.Options{
 			Ref:         releaseTag,
+			SourceDir:   releaseSourceDir,
 			Persistence: persistence,
 			ClusterEndpoint: devserver.ClusterEndpoint{
 				RPCAddress: currentSrv.FrontendHostPort(),

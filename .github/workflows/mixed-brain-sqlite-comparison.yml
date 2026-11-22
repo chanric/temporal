@@ -1,0 +1,104 @@
+name: Mixed Brain SQLite Comparison
+
+on:
+  push:
+    branches:
+      - test/mixedbrain-sqlite
+
+permissions:
+  contents: read
+
+env:
+  COMMIT: ${{ github.sha }}
+  TEMPORAL_VERSION_CHECK_DISABLED: 1
+  TEMPORAL_AWAIT_ATTEMPT_TIMEOUT: 15s
+
+jobs:
+  mixed-brain:
+    name: Mixed brain (${{ matrix.peer }})
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        peer: [stock, patched]
+    steps:
+      - name: Check out current server and test harness
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare Go
+        uses: ./.github/actions/prepare-go
+
+      - name: Check out v1.32.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: temporalio/temporal
+          ref: 6d085822273f4336796e6959c73ab1d14a23eb77 # v1.32.2
+          path: .mixedbrain-peer
+          persist-credentials: false
+
+      - name: Check out Omes
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: temporalio/omes
+          ref: d079d8207427af9f6c13f582eaf674545550cb05
+          path: .mixedbrain-omes
+          persist-credentials: false
+
+      - name: Apply the SQLite fix to the peer
+        if: matrix.peer == 'patched'
+        shell: bash
+        env:
+          SQLITE_FIX: d88255d031c7734a6dcc324fc362124334b74190
+        run: |
+          git show --format= "$SQLITE_FIX" -- common/persistence/sql/sqlplugin/sqlite | git -C .mixedbrain-peer apply --index
+          git -C .mixedbrain-peer diff --cached --stat
+          echo "Applied SQLite commit $SQLITE_FIX to the peer checkout."
+
+      - name: Run mixed brain test
+        timeout-minutes: 20
+        env:
+          PERSISTENCE_DRIVER: sqlite
+          TEST_TIMEOUT: 18m
+          MIXED_BRAIN_TEST_DURATION: 5m
+          MIXED_BRAIN_RELEASE_SOURCE_DIR: ${{ github.workspace }}/.mixedbrain-peer
+          MIXED_BRAIN_OMES_SOURCE_DIR: ${{ github.workspace }}/.mixedbrain-omes
+        run: |
+          git log -1 --format='Current server %H %s'
+          git -C "$MIXED_BRAIN_RELEASE_SOURCE_DIR" log -1 --format='Peer server %H %s'
+          git -C "$MIXED_BRAIN_OMES_SOURCE_DIR" log -1 --format='Omes %H %s'
+          ./develop/github/monitor_test.sh make mixed-brain-test
+
+      - name: Summarize SQLite lock errors
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '| Server | Database-lock log entries | Stale-snapshot entries |'
+            echo '| --- | ---: | ---: |'
+            for server in current release; do
+              log=".testoutput/mixedbrain_process-$server.log"
+              if [[ -s "$log" ]]; then
+                awk -v server="$server" '
+                  /database is locked/ { busy++ }
+                  /SQLITE_BUSY_SNAPSHOT|database is locked \(517\)/ { snapshot++ }
+                  END { printf "| %s | %d | %d |\n", server, busy, snapshot }
+                ' "$log"
+              else
+                echo "| $server | Log unavailable | Log unavailable |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mixed-brain-${{ matrix.peer }}-logs
+          include-hidden-files: true
+          path: |
+            .testoutput/mixedbrain_*.log
+            .testoutput/memory/
+            test.log

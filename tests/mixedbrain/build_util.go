@@ -74,10 +74,8 @@ func fetchPreviousMinorTag(t *testing.T) string {
 	return "v" + version.String()
 }
 
-// downloadAndBuildOmes clones omes main into workDir/omes and builds its
-// CLI into outputPath. We clone instead of going through the module cache so
-// the build resolves omes's transitive deps independently of this module's
-// go.sum (omes uses replace directives that block `go install`).
+// downloadAndBuildOmes clones Omes main and builds its CLI.
+// Building from source applies Omes's module replacements.
 func downloadAndBuildOmes(t *testing.T, workDir, outputPath string) {
 	t.Helper()
 
@@ -94,8 +92,12 @@ func downloadAndBuildOmes(t *testing.T, workDir, outputPath string) {
 		).CombinedOutput()
 		require.NoError(collect, err, "git clone failed:\n%s", out)
 	}, retryTimeout, 2*time.Second, "git clone omes")
+	buildOmes(t, repoDir, outputPath)
+}
 
-	t.Logf("Building omes into %s...", outputPath)
+func buildOmes(t *testing.T, repoDir, outputPath string) {
+	t.Helper()
+	t.Logf("Building Omes from %s", repoDir)
 	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", outputPath, "./cmd/omes")
 	cmd.Dir = repoDir
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=auto") // Omes main may require a newer toolchain
